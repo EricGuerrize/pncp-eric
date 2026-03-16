@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.xlsx
+*.csv
+*.log
+pncp_pipeline/output/
+pncp_pipeline/logs/
+.env
