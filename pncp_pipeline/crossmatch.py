@@ -89,15 +89,29 @@ def extrair_numero_puro(texto: str) -> tuple[int | None, int | None]:
 
 def normalizar_texto(texto: str) -> str:
     """
-    Normaliza texto: lowercase + remove acentos (NFKD) + colapsa espaços + strip.
+    Normaliza texto: lowercase + remove acentos + expurga stopwords licitatórias.
     """
     if not isinstance(texto, str):
         return ""
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = texto.lower()
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    return texto
+    
+    stopwords = [
+        r"registro de precos para( a| o)?( contratacao de empresa especializada (para|no|na)| fornecimento de| eventual e futura contratacao de empresa especializada na prestacao de servicos continuados de| futura e eventual aquisicao de)?",
+        r"registro de precos( para)?",
+        r"aquisicao de( agregados para a construcao civil substancia mineral de rocha britada em diversos tipos e granulometrias para utilizacao em manutencoes e reparos em vias urbanas e rurais pavimentacao drenagem e obras de arte bem como para execucao de| materiais e insumos para( equipar as)?| kits de teste de)?",
+        r"contratacao( de empresa( especializada( na prestacao de| para( o fornecimento de equipamentos para)?| em servicos de)?| por notoria especializacao para a)?| artistica mediante inexigibilidade para realizacao de)?",
+        r"prestacao de servicos?",
+        r"fornecimento( e instalacao)? de",
+        r"futura e eventual",
+        r"eventual e futura",
+        r"credenciamento( destinado a empresas que tenham interesse na prestacao de servicos especializados na realizacao de| de pessoas juridicas para a prestacao de servicos medicos destinados ao atendimento na| de empresa especializada em prestacao de)?",
+    ]
+    padrao = r"\b(" + "|".join(stopwords) + r")\b"
+    texto = re.sub(padrao, " ", texto)
+    
+    return re.sub(r'\s+', ' ', texto).strip()
 
 
 def converter_valor_br(texto) -> float | None:
@@ -522,22 +536,50 @@ def calcular_delta_financeiro(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def calcular_delta_temporal(df: pd.DataFrame) -> pd.DataFrame:
+    """Calcula a diferença em dias entre a publicação PNCP e a Abertura do APLIC."""
+    df = df.copy()
+    col_data_aplic = next((c for c in df.columns if 'abertura' in c.lower()), None)
+    col_data_pncp = 'dataPublicacaoPncp' if 'dataPublicacaoPncp' in df.columns else None
+    
+    if col_data_aplic and col_data_pncp:
+        data_p = pd.to_datetime(df[col_data_pncp], errors='coerce').dt.tz_localize(None)
+        data_a = pd.to_datetime(df[col_data_aplic], errors='coerce').dt.tz_localize(None)
+        df['delta_dias'] = (data_p - data_a).dt.days.abs()
+    else:
+        df['delta_dias'] = None
+    return df
+
+
 def classificar_status(df: pd.DataFrame) -> pd.DataFrame:
-    """Classifica status do cruzamento baseado no fuzzy_score e origem do merge."""
+    """Classifica status do cruzamento baseado no fuzzy_score, origem do merge e temporalidade."""
     df = df.copy()
 
     sem_match_mask = df['_origem_merge'] == 'sem_match'
-
     df['status_cruzamento'] = 'SEM_MATCH'
-    df.loc[~sem_match_mask & (df['fuzzy_score'] >= LIMIAR_MATCH_CONFIRMADO), 'status_cruzamento'] = 'MATCH_CONFIRMADO'
-    df.loc[
-        ~sem_match_mask &
-        (df['fuzzy_score'] >= LIMIAR_MATCH_PARCIAL) &
-        (df['fuzzy_score'] < LIMIAR_MATCH_CONFIRMADO),
-        'status_cruzamento'
-    ] = 'MATCH_PARCIAL'
+    
+    match_conf_mask = ~sem_match_mask & (df['fuzzy_score'] >= LIMIAR_MATCH_CONFIRMADO)
+    
+    if 'delta_dias' in df.columns:
+        delta_alto_mask = df['delta_dias'] > 60
+        df.loc[match_conf_mask & ~delta_alto_mask, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
+        df.loc[match_conf_mask & delta_alto_mask, 'status_cruzamento'] = 'MATCH_PARCIAL'
+    else:
+        df.loc[match_conf_mask, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
 
-    df['estrategia_match'] = df['_origem_merge']
+    match_parcial_mask = ~sem_match_mask & (df['fuzzy_score'] >= LIMIAR_MATCH_PARCIAL) & (df['fuzzy_score'] < LIMIAR_MATCH_CONFIRMADO)
+    df.loc[match_parcial_mask, 'status_cruzamento'] = 'MATCH_PARCIAL'
+
+    if 'estrategia_match' in df.columns:
+        apenas_aplic_mask = df['estrategia_match'] == 'sem_par_pncp'
+        df.loc[apenas_aplic_mask, 'status_cruzamento'] = 'APENAS_APLIC'
+
+    if '_origem_merge' in df.columns:
+        if 'estrategia_match' not in df.columns:
+            df['estrategia_match'] = df['_origem_merge']
+        else:
+            df['estrategia_match'] = df['estrategia_match'].fillna(df['_origem_merge'])
+
     return df
 
 
@@ -644,6 +686,7 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     if not df_pncp_final.empty:
         df_pncp_final['fuzzy_score'] = df_pncp_final.apply(_calcular_fuzzy_score, axis=1)
         df_pncp_final = calcular_delta_financeiro(df_pncp_final)
+        df_pncp_final = calcular_delta_temporal(df_pncp_final)
         df_pncp_final = classificar_status(df_pncp_final)
 
     # 8. Lado APLIC: registros sem par no PNCP (APENAS_APLIC)
