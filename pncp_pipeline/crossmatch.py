@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # DE-PARA: (cod_ug, municipio_normalizado) → CNPJ (14 dígitos sem formatação)
 DE_PARA_UG_CNPJ: dict[tuple[str, str], str] = {
     ("1111319", "lucas do rio verde"): "24772246000140",
+    ("1113125", "cuiaba"):             "03533064000146",
     # Adicionar mais mapeamentos conforme necessário
 }
 
