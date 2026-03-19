@@ -9,6 +9,11 @@ OUTPUT_DIR = BASE_DIR / "output"
 # Create directories if they don't exist
 LOGS_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+INPUT_DIR = BASE_DIR / "input"
+INPUT_DIR.mkdir(exist_ok=True)
+
+# Crossmatch APLIC
+APLIC_CSV_PATH = INPUT_DIR / "licitacao_lrv_2026.csv"
 
 # API Configuration
 PNCP_BASE_URL = "https://pncp.gov.br/api/consulta/v1"
