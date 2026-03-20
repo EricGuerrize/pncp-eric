@@ -6,3 +6,4 @@ __pycache__/
 pncp_pipeline/output/
 pncp_pipeline/logs/
 .env
+
