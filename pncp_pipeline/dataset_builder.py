@@ -31,18 +31,15 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
         
     # Columns to drop if they exist
     cols_to_drop = [
-        'orgaoEntidade_poderId', 'orgaoEntidade_esferaId', 'anoCompra', 
-        'sequencialCompra', 'orgaoSubRogado', 'unidadeOrgao_ufNome', 
-        'unidadeOrgao_codigoUnidade', 'unidadeOrgao_ufSigla',
-        'unidadeOrgao_codigoIbge', 'unidadeSubRogada', 'valorTotalHomologado', 
-        'srp', 'amparoLegal_codigo', 'amparoLegal_nome', 'amparoLegal_descricao', 
-        'dataEncerramentoProposta', 'informacaoComplementar', 'linkSistemaOrigem', 
-        'justificativaPresencial', 'dataAtualizacaoGlobal', 'linkProcessoEletronico', 
-        'modalidadeId', 'unidadeOrgao_nomeUnidade', 'modoDisputaId', 
-        'fontesOrcamentarias', 'situacaoCompraId', 'situacaoCompraNome', 
-        'usuarioNome', 'valorTotalEstimado', 'modoDisputaNome', 
-        'tipoInstrumentoConvocatorioNome', 'tipoInstrumentoConvocatorioCodigo', 
-        'data_execucao', 'modalidade_codigo_consultada', 'modalidade_nome_consultada', 
+        'orgaoEntidade_poderId', 'orgaoEntidade_esferaId',
+        'sequencialCompra', 'orgaoSubRogado', 'unidadeOrgao_ufNome',
+        'unidadeOrgao_ufSigla', 'unidadeSubRogada',
+        'srp', 'amparoLegal_codigo', 'amparoLegal_nome', 'amparoLegal_descricao',
+        'dataEncerramentoProposta', 'informacaoComplementar', 'linkSistemaOrigem',
+        'justificativaPresencial', 'dataAtualizacaoGlobal', 'linkProcessoEletronico',
+        'modoDisputaId', 'fontesOrcamentarias',
+        'tipoInstrumentoConvocatorioNome', 'tipoInstrumentoConvocatorioCodigo',
+        'data_execucao', 'modalidade_codigo_consultada', 'modalidade_nome_consultada',
         'pagina_origem'
     ]
     
@@ -51,9 +48,14 @@ def clean_dataset(df: pd.DataFrame) -> pd.DataFrame:
     
     # Columns to keep, reordering if possible
     cols_to_keep = [
-        'dataInclusao', 'dataPublicacaoPncp', 'orgaoEntidade_cnpj', 'orgaoEntidade_razaoSocial', 
-        'unidadeOrgao_municipioNome', 'numeroCompra', 'processo', 
-        'modalidadeNome', 'objetoCompra', 'numeroControlePNCP', 'dataAtualizacao'
+        'dataInclusao', 'dataPublicacaoPncp', 'orgaoEntidade_cnpj', 'orgaoEntidade_razaoSocial',
+        'unidadeOrgao_municipioNome', 'unidadeOrgao_nomeUnidade', 'unidadeOrgao_codigoUnidade',
+        'unidadeOrgao_codigoIbge', 'usuarioNome',
+        'numeroCompra', 'anoCompra', 'processo',
+        'modalidadeId', 'modalidadeNome', 'modoDisputaNome',
+        'situacaoCompraId', 'situacaoCompraNome',
+        'objetoCompra', 'valorTotalEstimado', 'valorTotalHomologado',
+        'numeroControlePNCP', 'dataAtualizacao'
     ]
     
     existing_cols_to_keep = [col for col in cols_to_keep if col in df.columns]

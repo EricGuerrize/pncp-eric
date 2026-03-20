@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 DE_PARA_UG_CNPJ: dict[tuple[str, str], str] = {
     ("1111319", "lucas do rio verde"): "24772246000140",
     ("1113125", "cuiaba"):             "03533064000146",
-    # Adicionar mais mapeamentos conforme necessário
+    ("1118736", "sinop"):              "00814574000101",  # Câmara Municipal de Sinop
+    ("1113257", "sinop"):              "00571071000144",  # Instituto de Previdência de Sinop
+    ("1112309", "sinop"):              "15024003000132",  # Prefeitura Municipal de Sinop
 }
 
 # Modalidade APLIC (código string) → modalidadeId PNCP (int)
@@ -312,7 +314,10 @@ def deduplicar_pncp(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     df = df.copy()
-    df['_tem_homologado'] = (df.get('valorTotalHomologado', 0) > 0).astype(int)
+    if 'valorTotalHomologado' in df.columns:
+        df['_tem_homologado'] = (pd.to_numeric(df['valorTotalHomologado'], errors='coerce').fillna(0) > 0).astype(int)
+    else:
+        df['_tem_homologado'] = 0
     df = df.sort_values(
         ['_tem_homologado', 'dataPublicacaoPncp'],
         ascending=[False, False],
