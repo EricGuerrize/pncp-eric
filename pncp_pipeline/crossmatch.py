@@ -21,6 +21,7 @@ import logging
 import unicodedata
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -289,11 +290,18 @@ def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
         logger.warning("Coluna Município não encontrada no APLIC.")
 
     col_objetivo = next((c for c in df.columns if 'objetivo' in c.lower() or 'objeto' in c.lower()), None)
-    if col_objetivo:
-        df['_objetivo_norm'] = df[col_objetivo].apply(normalizar_texto)
-    else:
-        df['_objetivo_norm'] = ""
+    col_motivo   = next((c for c in df.columns if 'motivo' in c.lower()), None)
+
+    # Objetivo e Motivo são tratados como campos intercambiáveis:
+    # no APLIC não há padronização — o texto descritivo pode estar em qualquer um.
+    # O matching usa o máximo dos dois scores contra o objetoCompra do PNCP.
+    df['_objetivo_norm'] = df[col_objetivo].apply(normalizar_texto) if col_objetivo else ""
+    df['_motivo_norm']   = df[col_motivo].apply(normalizar_texto)   if col_motivo   else ""
+
+    if not col_objetivo:
         logger.warning("Coluna Objetivo não encontrada no APLIC.")
+    if not col_motivo:
+        logger.warning("Coluna Motivo não encontrada no APLIC.")
 
     # Valores financeiros
     col_val_est = next((c for c in df.columns if 'estimado' in c.lower()), None)
@@ -406,7 +414,13 @@ def _merge_primario(
 
         objetos   = grupo_pncp['_objeto_norm'].fillna('').tolist()
         objetivos = grupo_aplic['_objetivo_norm'].fillna('').tolist()
-        matrix    = rfprocess.cdist(objetos, objetivos, scorer=rffuzz.token_sort_ratio)
+        motivos   = grupo_aplic['_motivo_norm'].fillna('').tolist() if '_motivo_norm' in grupo_aplic.columns else [''] * len(grupo_aplic)
+
+        # Calcula score contra Objetivo e Motivo separadamente; usa o maior.
+        # Resolve a falta de padronização no APLIC: o texto pode estar em qualquer campo.
+        matrix_obj = rfprocess.cdist(objetos, objetivos, scorer=rffuzz.token_sort_ratio)
+        matrix_mot = rfprocess.cdist(objetos, motivos,   scorer=rffuzz.token_sort_ratio)
+        matrix = np.maximum(matrix_obj, matrix_mot)
 
         pncp_indices  = list(grupo_pncp.index)
         aplic_indices = list(grupo_aplic.index)
@@ -575,17 +589,27 @@ def _merge_terciario(
 # ---------------------------------------------------------------------------
 
 def _calcular_fuzzy_score(row: pd.Series) -> float:
-    """Calcula fuzzy score entre objeto PNCP e objetivo APLIC."""
+    """
+    Calcula fuzzy score entre objetoCompra (PNCP) e os campos descritivos do APLIC.
+    Retorna o maior entre score(Objetivo) e score(Motivo), pois no APLIC o texto
+    relevante pode estar em qualquer um dos dois campos sem padronização.
+    """
     try:
         from rapidfuzz import fuzz as rffuzz
     except ImportError:
         return 0.0
 
-    obj  = row.get('_objeto_norm', '')
-    alvo = row.get('_objetivo_norm', '')
-    if not obj or not alvo or not isinstance(obj, str) or not isinstance(alvo, str):
+    obj = row.get('_objeto_norm', '') or ''
+    if not isinstance(obj, str) or not obj:
         return 0.0
-    return float(rffuzz.token_sort_ratio(obj, alvo))
+
+    objetivo = row.get('_objetivo_norm', '') or ''
+    motivo   = row.get('_motivo_norm',   '') or ''
+
+    score_obj = float(rffuzz.token_sort_ratio(obj, objetivo)) if isinstance(objetivo, str) and objetivo else 0.0
+    score_mot = float(rffuzz.token_sort_ratio(obj, motivo))   if isinstance(motivo,   str) and motivo   else 0.0
+
+    return max(score_obj, score_mot)
 
 
 def _calcular_score_composto(row: pd.Series) -> float:
