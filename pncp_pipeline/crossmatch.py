@@ -850,7 +850,12 @@ def carregar_aplic(caminho: Path) -> pd.DataFrame:
 
     with open(caminho, 'r', encoding='utf-8-sig') as f:
         reader = csv.reader(f)
-        header = next(reader)
+        # Pula linhas vazias iniciais (exportações Oracle costumam ter \r\n antes do header)
+        header = []
+        for row in reader:
+            if any(row):
+                header = row
+                break
         expected_len = len(header)
 
         fixed_rows = []
