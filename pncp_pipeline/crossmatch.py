@@ -1,8 +1,14 @@
 """
 crossmatch.py — Cruzamento PNCP × APLIC (TCE-MT)
 
-Cruza o DataFrame de contratações do PNCP com o extrato Oracle do APLIC,
-validando licitações municipais/estaduais para fins de auditoria.
+Cascata de matching (ordem de prioridade):
+  Tier 1 — Semântico + Financeiro: fuzzy objeto/objetivo (≥85) + valor delta ≤10%
+  Tier 2 — CNPJ + Data: CNPJ exato + abertura vs publicação ≤30 dias
+  Tier 3 — Estrutural (fallback): município + número + ano + modalidade
+
+Score composto pós-match:
+  50% fuzzy texto + 30% delta valor + 20% delta data
+  ≥85 → MATCH_CONFIRMADO | ≥70 → MATCH_PARCIAL | <70 → SEM_MATCH (rebaixado)
 
 Uso standalone:
     python crossmatch.py pncp_contratacoes_MT_*.xlsx licitacao_lrv_2026.csv
@@ -50,7 +56,14 @@ MAPA_MODALIDADE_APLIC_PARA_PNCP: dict[str, int] = {
 }
 
 LIMIAR_MATCH_CONFIRMADO = 85
-LIMIAR_MATCH_PARCIAL = 70
+LIMIAR_MATCH_PARCIAL    = 70
+
+# Tier 1: semântico + financeiro
+LIMIAR_FUZZY_T1 = 85    # token_sort_ratio mínimo
+LIMIAR_VALOR_T1 = 10.0  # delta valor % máximo
+
+# Tier 2: CNPJ + data
+LIMIAR_DIAS_T2 = 30     # diferença máxima em dias
 
 
 # ---------------------------------------------------------------------------
@@ -359,143 +372,202 @@ def deduplicar_aplic(df: pd.DataFrame) -> pd.DataFrame:
 # Lógica de merge em cascata
 # ---------------------------------------------------------------------------
 
-def _merge_primario(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _merge_primario(
+    df_pncp: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, set]:
     """
-    Tier 1: merge forte por CNPJ + número + ano + modalidade.
-    Retorna (matched, pncp_orfaos).
+    Tier 1 — Semântico + Financeiro (mais discriminante).
+    Aceita match se fuzzy objeto/objetivo >= LIMIAR_FUZZY_T1
+    E delta valor <= LIMIAR_VALOR_T1%.
+    Agrupa por (municipio_norm, ano). Atribuição greedy (maior score primeiro).
+
+    Retorna (matched, pncp_orfaos, matched_aplic_indices).
     """
-    cnpjs_aplic = set(df_aplic['_cnpj_mapeado'].dropna().unique())
-    pncp_com_cnpj = df_pncp[df_pncp['orgaoEntidade_cnpj'].isin(cnpjs_aplic)].copy()
-    pncp_sem_cnpj = df_pncp[~df_pncp['orgaoEntidade_cnpj'].isin(cnpjs_aplic)].copy()
+    try:
+        from rapidfuzz import process as rfprocess, fuzz as rffuzz
+    except ImportError:
+        logger.warning("rapidfuzz não instalado. Tier 1 (semântico) ignorado.")
+        return pd.DataFrame(), df_pncp.copy(), set()
 
-    if pncp_com_cnpj.empty:
-        logger.info("[Tier 1] Nenhum CNPJ PNCP presente no DE-PARA. Todos vão para Tier 2.")
-        return pd.DataFrame(), df_pncp
+    matched_rows: list[dict] = []
+    matched_pncp_idx: set = set()
+    matched_aplic_idx: set = set()
 
-    # Preserva o índice original para identificar quais linhas matcharam
-    pncp_com_cnpj = pncp_com_cnpj.reset_index(drop=False).rename(columns={'index': '_idx_orig'})
+    grupos = df_pncp.groupby(['_municipio_norm', '_ano_extraido'], dropna=False)
 
-    merged = pncp_com_cnpj.merge(
-        df_aplic,
-        left_on=['orgaoEntidade_cnpj', '_numero_puro', '_ano_extraido', 'modalidadeId'],
-        right_on=['_cnpj_mapeado', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id'],
-        how='left',
-        suffixes=('', '_aplic')
-    )
-    merged['_origem_merge'] = merged['_cnpj_mapeado'].apply(
-        lambda x: 'primario' if pd.notna(x) else 'sem_match'
-    )
+    for (mun, ano), grupo_pncp in grupos:
+        grupo_aplic = df_aplic[
+            (df_aplic['_municipio_norm'] == mun) &
+            (df_aplic['_ano_extraido'] == ano)
+        ]
+        if grupo_aplic.empty:
+            continue
 
-    matched = merged[merged['_cnpj_mapeado'].notna()].copy()
+        objetos   = grupo_pncp['_objeto_norm'].fillna('').tolist()
+        objetivos = grupo_aplic['_objetivo_norm'].fillna('').tolist()
+        matrix    = rfprocess.cdist(objetos, objetivos, scorer=rffuzz.token_sort_ratio)
 
-    # Índices originais que matcharam no Tier 1
-    idx_matchados = set(matched['_idx_orig'].dropna().astype(int))
+        pncp_indices  = list(grupo_pncp.index)
+        aplic_indices = list(grupo_aplic.index)
 
-    # Órfãos: sem CNPJ no DE-PARA + com CNPJ mas sem match no APLIC
-    pncp_sem_match_t1 = df_pncp[
-        df_pncp.orgaoEntidade_cnpj.isin(cnpjs_aplic) &
-        ~df_pncp.index.isin(idx_matchados)
-    ]
-    pncp_orfaos = pd.concat([pncp_sem_cnpj, pncp_sem_match_t1], ignore_index=True)
+        # Monta candidatos: (score_texto, pncp_ri, aplic_ri)
+        candidatos: list[tuple] = []
+        for i, pncp_ri in enumerate(pncp_indices):
+            for j, aplic_ri in enumerate(aplic_indices):
+                score_texto = float(matrix[i][j])
+                if score_texto < LIMIAR_FUZZY_T1:
+                    continue
+                # Verifica delta de valor
+                val_p = pd.to_numeric(
+                    df_pncp.loc[pncp_ri, 'valorTotalEstimado'], errors='coerce'
+                ) or 0.0
+                val_a = df_aplic.loc[aplic_ri, '_valor_estimado_float'] or 0.0
+                if val_p > 0 and val_a > 0:
+                    delta_val = abs(val_p - val_a) / max(val_p, val_a) * 100
+                    if delta_val > LIMIAR_VALOR_T1:
+                        continue
+                candidatos.append((score_texto, pncp_ri, aplic_ri))
 
-    # Remove coluna auxiliar de índice
-    matched = matched.drop(columns=['_idx_orig'], errors='ignore')
+        # Atribuição greedy: maior score primeiro
+        candidatos.sort(key=lambda x: -x[0])
+        for score_t, pncp_ri, aplic_ri in candidatos:
+            if pncp_ri in matched_pncp_idx or aplic_ri in matched_aplic_idx:
+                continue
+            row = df_pncp.loc[pncp_ri].to_dict()
+            for col in df_aplic.columns:
+                if col not in row:
+                    row[col] = df_aplic.loc[aplic_ri, col]
+            row['_origem_merge']      = 'primario_semantico'
+            row['_fuzzy_score_tier1'] = score_t
+            matched_rows.append(row)
+            matched_pncp_idx.add(pncp_ri)
+            matched_aplic_idx.add(aplic_ri)
 
+    if not matched_rows:
+        logger.info(f"[Tier 1] 0 matches | {len(df_pncp)} órfãos PNCP")
+        return pd.DataFrame(), df_pncp.copy(), set()
+
+    matched     = pd.DataFrame(matched_rows)
+    pncp_orfaos = df_pncp[~df_pncp.index.isin(matched_pncp_idx)].copy()
     logger.info(f"[Tier 1] {len(matched)} matches | {len(pncp_orfaos)} órfãos PNCP")
-    return matched, pncp_orfaos
+    return matched, pncp_orfaos, matched_aplic_idx
 
 
-def _merge_secundario(df_pncp_orfaos: pd.DataFrame, df_aplic: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _merge_secundario(
+    df_pncp_orfaos: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+    already_matched_aplic: set,
+) -> tuple[pd.DataFrame, pd.DataFrame, set]:
     """
-    Tier 2: fallback por município + número + ano + modalidade.
-    Retorna (matched, remanescentes_pncp).
+    Tier 2 — CNPJ + Data.
+    Para cada PNCP órfão cujo CNPJ está no DE-PARA, busca o registro APLIC
+    com mesmo CNPJ e menor delta de data (máx. LIMIAR_DIAS_T2 dias).
+
+    Retorna (matched, remanescentes, new_matched_aplic_indices).
     """
     if df_pncp_orfaos.empty:
-        return pd.DataFrame(), df_pncp_orfaos
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
 
-    merged = df_pncp_orfaos.merge(
-        df_aplic,
+    cnpjs_aplic   = set(df_aplic['_cnpj_mapeado'].dropna().unique())
+    pncp_com_cnpj = df_pncp_orfaos[df_pncp_orfaos['orgaoEntidade_cnpj'].isin(cnpjs_aplic)]
+
+    if pncp_com_cnpj.empty:
+        logger.info("[Tier 2] Nenhum CNPJ PNCP presente no DE-PARA.")
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
+
+    col_data_aplic = next((c for c in df_aplic.columns if 'abertura' in c.lower()), None)
+
+    matched_rows: list[dict] = []
+    matched_pncp_idx: set = set()
+    matched_aplic_idx: set = set()
+
+    for pncp_ri, pncp_row in pncp_com_cnpj.iterrows():
+        cnpj = pncp_row['orgaoEntidade_cnpj']
+        candidatos_aplic = df_aplic[
+            (df_aplic['_cnpj_mapeado'] == cnpj) &
+            (~df_aplic.index.isin(already_matched_aplic | matched_aplic_idx))
+        ]
+        if candidatos_aplic.empty:
+            continue
+
+        data_pncp = pd.to_datetime(pncp_row.get('dataPublicacaoPncp'), errors='coerce')
+        if pd.notna(data_pncp) and getattr(data_pncp, 'tzinfo', None):
+            data_pncp = data_pncp.tz_localize(None)
+
+        melhor_delta    = float('inf')
+        melhor_aplic_ri = None
+
+        for aplic_ri, aplic_row in candidatos_aplic.iterrows():
+            if col_data_aplic and pd.notna(data_pncp):
+                data_a = pd.to_datetime(aplic_row.get(col_data_aplic), errors='coerce')
+                if pd.notna(data_a):
+                    delta = abs((data_pncp - data_a).days)
+                    if delta <= LIMIAR_DIAS_T2 and delta < melhor_delta:
+                        melhor_delta    = delta
+                        melhor_aplic_ri = aplic_ri
+            else:
+                # Sem data disponível: aceita qualquer APLIC com mesmo CNPJ
+                melhor_aplic_ri = aplic_ri
+                melhor_delta    = 0
+                break
+
+        if melhor_aplic_ri is not None:
+            row = pncp_row.to_dict()
+            for col in df_aplic.columns:
+                if col not in row:
+                    row[col] = df_aplic.loc[melhor_aplic_ri, col]
+            row['_origem_merge']      = 'secundario_cnpj_data'
+            row['_delta_dias_tier2']  = melhor_delta
+            matched_rows.append(row)
+            matched_pncp_idx.add(pncp_ri)
+            matched_aplic_idx.add(melhor_aplic_ri)
+
+    if not matched_rows:
+        logger.info(f"[Tier 2] 0 matches | {len(df_pncp_orfaos)} remanescentes PNCP")
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
+
+    matched      = pd.DataFrame(matched_rows)
+    remanescentes = df_pncp_orfaos[~df_pncp_orfaos.index.isin(matched_pncp_idx)].copy()
+    logger.info(f"[Tier 2] {len(matched)} matches | {len(remanescentes)} remanescentes PNCP")
+    return matched, remanescentes, matched_aplic_idx
+
+
+def _merge_terciario(
+    df_pncp_rem: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+    already_matched_aplic: set,
+) -> tuple[pd.DataFrame, set]:
+    """
+    Tier 3 — Fallback estrutural: município + número + ano + modalidade.
+    Último recurso para registros não resolvidos pelos tiers semântico e de CNPJ.
+
+    Retorna (result_df, new_matched_aplic_indices).
+    """
+    if df_pncp_rem.empty:
+        return pd.DataFrame(), set()
+
+    df_aplic_disp = df_aplic[~df_aplic.index.isin(already_matched_aplic)].copy()
+    df_aplic_disp['_aplic_orig_idx'] = df_aplic_disp.index
+
+    merged = df_pncp_rem.merge(
+        df_aplic_disp,
         left_on=['_municipio_norm', '_numero_puro', '_ano_extraido', 'modalidadeId'],
         right_on=['_municipio_norm', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id'],
         how='left',
         suffixes=('', '_aplic')
     )
     merged['_origem_merge'] = merged['_cnpj_mapeado'].apply(
-        lambda x: 'secundario_municipio' if pd.notna(x) else 'sem_match'
+        lambda x: 'terciario_estrutural' if pd.notna(x) else 'sem_match'
     )
 
-    matched = merged[merged['_cnpj_mapeado'].notna()].copy()
-    matched_orig_idx = set(matched.index)
-    remanescentes = df_pncp_orfaos[~df_pncp_orfaos.index.isin(matched_orig_idx)].copy()
+    new_matched = set(merged['_aplic_orig_idx'].dropna().astype(int))
+    merged = merged.drop(columns=['_aplic_orig_idx'], errors='ignore')
 
-    logger.info(f"[Tier 2] {len(matched)} matches | {len(remanescentes)} remanescentes PNCP")
-    return matched, remanescentes
-
-
-def _merge_terciario(df_pncp_rem: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
-    """
-    Tier 3: fuzzy match por objeto/objetivo dentro do mesmo (ano, município).
-    """
-    if df_pncp_rem.empty:
-        return pd.DataFrame()
-
-    try:
-        from rapidfuzz import process as rfprocess, fuzz as rffuzz
-    except ImportError:
-        logger.warning("rapidfuzz não instalado. Tier 3 (fuzzy) ignorado.")
-        df_out = df_pncp_rem.copy()
-        df_out['_origem_merge'] = 'sem_match'
-        return df_out
-
-    resultados = []
-    grupos = df_pncp_rem.groupby(['_ano_extraido', '_municipio_norm'], dropna=False)
-
-    for (ano, mun), grupo_pncp in grupos:
-        grupo_aplic = df_aplic[
-            (df_aplic['_ano_extraido'] == ano) &
-            (df_aplic['_municipio_norm'] == mun)
-        ]
-
-        if grupo_aplic.empty:
-            for _, row in grupo_pncp.iterrows():
-                d = row.to_dict()
-                d['_origem_merge'] = 'sem_match'
-                resultados.append(d)
-            continue
-
-        objetos_pncp = grupo_pncp['_objeto_norm'].fillna('').tolist()
-        objetivos_aplic = grupo_aplic['_objetivo_norm'].fillna('').tolist()
-
-        matrix = rfprocess.cdist(
-            objetos_pncp, objetivos_aplic,
-            scorer=rffuzz.token_sort_ratio
-        )
-
-        for i, (_, row_pncp) in enumerate(grupo_pncp.iterrows()):
-            scores = matrix[i]
-            melhor_score = float(scores.max()) if len(scores) > 0 else 0.0
-            melhor_idx = int(scores.argmax()) if melhor_score >= LIMIAR_MATCH_PARCIAL else None
-
-            d = row_pncp.to_dict()
-            if melhor_idx is not None:
-                aplic_row = grupo_aplic.iloc[melhor_idx]
-                for col in aplic_row.index:
-                    if col not in d:
-                        d[col] = aplic_row[col]
-                d['_origem_merge'] = 'terciario_fuzzy'
-                d['_fuzzy_score_tier3'] = melhor_score
-            else:
-                d['_origem_merge'] = 'sem_match'
-            resultados.append(d)
-
-    if not resultados:
-        return pd.DataFrame()
-
-    resultado = pd.DataFrame(resultados)
-    n_fuzzy = (resultado['_origem_merge'] == 'terciario_fuzzy').sum()
-    n_sem = (resultado['_origem_merge'] == 'sem_match').sum()
-    logger.info(f"[Tier 3] {n_fuzzy} matches fuzzy | {n_sem} sem match")
-    return resultado
+    n_matched = (merged['_origem_merge'] == 'terciario_estrutural').sum()
+    n_sem     = (merged['_origem_merge'] == 'sem_match').sum()
+    logger.info(f"[Tier 3] {n_matched} matches estruturais | {n_sem} sem match")
+    return merged, new_matched
 
 
 # ---------------------------------------------------------------------------
@@ -509,11 +581,49 @@ def _calcular_fuzzy_score(row: pd.Series) -> float:
     except ImportError:
         return 0.0
 
-    obj = row.get('_objeto_norm', '')
+    obj  = row.get('_objeto_norm', '')
     alvo = row.get('_objetivo_norm', '')
     if not obj or not alvo or not isinstance(obj, str) or not isinstance(alvo, str):
         return 0.0
     return float(rffuzz.token_sort_ratio(obj, alvo))
+
+
+def _calcular_score_composto(row: pd.Series) -> float:
+    """
+    Score composto pós-match:
+      50% fuzzy texto (objeto PNCP vs objetivo APLIC)
+      30% proximidade de valor (delta_percentual)
+      20% proximidade de data  (delta_dias)
+
+    Componentes ausentes recebem score neutro (50) para não penalizar
+    registros com dados incompletos.
+    """
+    # Texto
+    score_texto = float(row.get('fuzzy_score') or 0)
+
+    # Valor
+    delta_val = row.get('delta_percentual')
+    if delta_val is None or (isinstance(delta_val, float) and pd.isna(delta_val)):
+        score_valor = 50.0
+    elif delta_val <= 10:
+        score_valor = 100.0
+    elif delta_val <= 30:
+        score_valor = 50.0
+    else:
+        score_valor = 0.0
+
+    # Data
+    delta_dias = row.get('delta_dias')
+    if delta_dias is None or (isinstance(delta_dias, float) and pd.isna(delta_dias)):
+        score_data = 50.0
+    elif delta_dias <= 15:
+        score_data = 100.0
+    elif delta_dias <= 30:
+        score_data = 50.0
+    else:
+        score_data = 0.0
+
+    return round(score_texto * 0.5 + score_valor * 0.3 + score_data * 0.2, 2)
 
 
 def calcular_delta_financeiro(df: pd.DataFrame) -> pd.DataFrame:
@@ -557,33 +667,37 @@ def calcular_delta_temporal(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def classificar_status(df: pd.DataFrame) -> pd.DataFrame:
-    """Classifica status do cruzamento baseado no fuzzy_score, origem do merge e temporalidade."""
+    """
+    Classifica status usando score composto (50% texto + 30% valor + 20% data).
+    Matches com score < LIMIAR_MATCH_PARCIAL são rebaixados para SEM_MATCH.
+    """
     df = df.copy()
 
     sem_match_mask = df['_origem_merge'] == 'sem_match'
     df['status_cruzamento'] = 'SEM_MATCH'
-    
-    match_conf_mask = ~sem_match_mask & (df['fuzzy_score'] >= LIMIAR_MATCH_CONFIRMADO)
-    
-    if 'delta_dias' in df.columns:
-        delta_alto_mask = df['delta_dias'] > 60
-        df.loc[match_conf_mask & ~delta_alto_mask, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
-        df.loc[match_conf_mask & delta_alto_mask, 'status_cruzamento'] = 'MATCH_PARCIAL'
+
+    if 'estrategia_match' not in df.columns:
+        df['estrategia_match'] = df['_origem_merge']
     else:
-        df.loc[match_conf_mask, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
+        df['estrategia_match'] = df['estrategia_match'].fillna(df['_origem_merge'])
 
-    match_parcial_mask = ~sem_match_mask & (df['fuzzy_score'] >= LIMIAR_MATCH_PARCIAL) & (df['fuzzy_score'] < LIMIAR_MATCH_CONFIRMADO)
-    df.loc[match_parcial_mask, 'status_cruzamento'] = 'MATCH_PARCIAL'
+    # Score composto apenas para linhas com match
+    df['score_composto'] = 0.0
+    mask_com_match = ~sem_match_mask
+    if mask_com_match.any():
+        df.loc[mask_com_match, 'score_composto'] = (
+            df[mask_com_match].apply(_calcular_score_composto, axis=1)
+        )
 
-    if 'estrategia_match' in df.columns:
-        apenas_aplic_mask = df['estrategia_match'] == 'sem_par_pncp'
-        df.loc[apenas_aplic_mask, 'status_cruzamento'] = 'APENAS_APLIC'
+    confirmado = mask_com_match & (df['score_composto'] >= LIMIAR_MATCH_CONFIRMADO)
+    parcial    = mask_com_match & (df['score_composto'] >= LIMIAR_MATCH_PARCIAL) & (~confirmado)
+    # score < LIMIAR_MATCH_PARCIAL → permanece SEM_MATCH (rebaixado)
 
-    if '_origem_merge' in df.columns:
-        if 'estrategia_match' not in df.columns:
-            df['estrategia_match'] = df['_origem_merge']
-        else:
-            df['estrategia_match'] = df['estrategia_match'].fillna(df['_origem_merge'])
+    df.loc[confirmado, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
+    df.loc[parcial,    'status_cruzamento'] = 'MATCH_PARCIAL'
+
+    # Respeita override APENAS_APLIC
+    df.loc[df['estrategia_match'] == 'sem_par_pncp', 'status_cruzamento'] = 'APENAS_APLIC'
 
     return df
 
@@ -598,64 +712,46 @@ def selecionar_colunas_saida(df: pd.DataFrame) -> pd.DataFrame:
 # Entry Point
 # ---------------------------------------------------------------------------
 
-def _make_chave(df: pd.DataFrame, col_num: str, col_ano: str, col_mod: str) -> pd.Series:
-    """Gera chave string normalizada (inteiros) para comparação entre DataFrames."""
-    def to_int_str(s):
-        return pd.to_numeric(s, errors='coerce').fillna(-1).astype(int).astype(str)
-    return to_int_str(df[col_num]) + '_' + to_int_str(df[col_ano]) + '_' + to_int_str(df[col_mod])
 
-
-def _aplic_sem_pncp(df_a: pd.DataFrame, df_pncp_matched: pd.DataFrame) -> pd.DataFrame:
+def _aplic_sem_pncp(
+    df_a: pd.DataFrame,
+    matched_aplic_indices: set,
+) -> pd.DataFrame:
     """
-    Identifica registros do APLIC que não encontraram nenhum par no PNCP.
+    Identifica registros APLIC sem par em nenhum tier PNCP.
+    Usa o conjunto de índices reais do DataFrame APLIC acumulados pelos tiers.
     Retorna DataFrame com status_cruzamento = 'APENAS_APLIC'.
     """
-    # Chave do APLIC: número + ano + modalidade
-    chave_aplic = _make_chave(df_a, '_numero_puro', '_ano_extraido', '_modalidade_pncp_id')
+    nao_matched = df_a[~df_a.index.isin(matched_aplic_indices)].copy()
 
-    # Chave dos matches PNCP: apenas as linhas que efetivamente matcharam
-    if not df_pncp_matched.empty and '_origem_merge' in df_pncp_matched.columns:
-        df_com_match = df_pncp_matched[
-            df_pncp_matched['_origem_merge'].isin(['primario', 'secundario_municipio', 'terciario_fuzzy'])
-        ]
-    else:
-        df_com_match = pd.DataFrame()
-
-    if not df_com_match.empty and '_modalidade_pncp_id' in df_com_match.columns:
-        keys_matched = set(
-            _make_chave(df_com_match, '_numero_puro', '_ano_extraido', '_modalidade_pncp_id')
-        )
-    else:
-        keys_matched = set()
-
-    aplic_nao_matched = df_a[~chave_aplic.isin(keys_matched)].copy()
-
-    if aplic_nao_matched.empty:
+    if nao_matched.empty:
         return pd.DataFrame()
 
-    aplic_nao_matched['status_cruzamento'] = 'APENAS_APLIC'
-    aplic_nao_matched['estrategia_match'] = 'sem_par_pncp'
-    aplic_nao_matched['fuzzy_score'] = 0.0
-    aplic_nao_matched['delta_percentual'] = None
-    aplic_nao_matched['validacao_financeira'] = 'SEM_VALOR'
+    nao_matched['status_cruzamento']    = 'APENAS_APLIC'
+    nao_matched['estrategia_match']     = 'sem_par_pncp'
+    nao_matched['fuzzy_score']          = 0.0
+    nao_matched['score_composto']       = 0.0
+    nao_matched['delta_percentual']     = None
+    nao_matched['validacao_financeira'] = 'SEM_VALOR'
 
-    logger.info(f"[APLIC sem PNCP] {len(aplic_nao_matched)} registros APLIC sem par no PNCP")
-    return aplic_nao_matched
+    logger.info(f"[APLIC sem PNCP] {len(nao_matched)} registros APLIC sem par no PNCP")
+    return nao_matched
 
 
 def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     """
-    Realiza o cruzamento PNCP × APLIC em cascata (3 tiers) + lado APLIC sem par.
+    Cruzamento PNCP × APLIC em cascata (3 tiers) + lado APLIC sem par.
 
-    O resultado cobre os 3 cenários de auditoria:
-      - MATCH_CONFIRMADO / MATCH_PARCIAL: licitação presente nos dois sistemas
-      - SEM_MATCH: publicada no PNCP mas sem registro no APLIC
-      - APENAS_APLIC: registrada no APLIC mas sem publicação no PNCP
+    Tier 1 — Semântico + Financeiro (mais discriminante):
+        fuzzy objeto/objetivo + delta valor
+    Tier 2 — CNPJ + Data (confirmação estrutural):
+        CNPJ exato + proximidade de data
+    Tier 3 — Estrutural (fallback):
+        município + número + ano + modalidade
 
-    Returns:
-        DataFrame com colunas originais PNCP + colunas APLIC +
-        colunas de diagnóstico: status_cruzamento, fuzzy_score,
-        delta_percentual, validacao_financeira, estrategia_match.
+    Colunas de diagnóstico no resultado:
+        status_cruzamento, estrategia_match, fuzzy_score, score_composto,
+        delta_percentual, validacao_financeira, delta_dias
     """
     logger.info("=" * 60)
     logger.info("INICIANDO CROSSMATCH PNCP × APLIC")
@@ -669,14 +765,18 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     df_p = deduplicar_pncp(df_p)
     df_a = deduplicar_aplic(df_a)
 
-    # 3. Tier 1 — primário (CNPJ)
-    matched_t1, pncp_orfaos = _merge_primario(df_p, df_a)
+    # 3. Tier 1 — Semântico + Financeiro
+    matched_t1, pncp_orfaos, matched_aplic_t1 = _merge_primario(df_p, df_a)
 
-    # 4. Tier 2 — secundário (município)
-    matched_t2, remanescentes = _merge_secundario(pncp_orfaos, df_a)
+    # 4. Tier 2 — CNPJ + Data
+    matched_t2, remanescentes, matched_aplic_t2 = _merge_secundario(
+        pncp_orfaos, df_a, matched_aplic_t1
+    )
 
-    # 5. Tier 3 — terciário (fuzzy)
-    matched_t3 = _merge_terciario(remanescentes, df_a)
+    # 5. Tier 3 — Estrutural (fallback)
+    all_matched_aplic = matched_aplic_t1 | matched_aplic_t2
+    matched_t3, matched_aplic_t3 = _merge_terciario(remanescentes, df_a, all_matched_aplic)
+    all_matched_aplic |= matched_aplic_t3
 
     # 6. Consolida lado PNCP
     partes = [p for p in [matched_t1, matched_t2, matched_t3]
@@ -687,15 +787,15 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     else:
         df_pncp_final = pd.concat(partes, ignore_index=True)
 
-    # 7. Enriquecimento do lado PNCP
+    # 7. Enriquecimento + classificação
     if not df_pncp_final.empty:
         df_pncp_final['fuzzy_score'] = df_pncp_final.apply(_calcular_fuzzy_score, axis=1)
         df_pncp_final = calcular_delta_financeiro(df_pncp_final)
         df_pncp_final = calcular_delta_temporal(df_pncp_final)
         df_pncp_final = classificar_status(df_pncp_final)
 
-    # 8. Lado APLIC: registros sem par no PNCP (APENAS_APLIC)
-    df_apenas_aplic = _aplic_sem_pncp(df_a, df_pncp_final)
+    # 8. Lado APLIC: registros sem par em nenhum tier
+    df_apenas_aplic = _aplic_sem_pncp(df_a, all_matched_aplic)
 
     # 9. Junta os dois lados
     partes_final = [p for p in [df_pncp_final, df_apenas_aplic]
@@ -706,12 +806,11 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     df_final = selecionar_colunas_saida(df_final)
 
     # 11. Log de contagens
-    logger.info("Contagem por status_cruzamento:")
-    for status, count in df_final['status_cruzamento'].value_counts().items():
-        logger.info(f"  {status}: {count}")
-    logger.info("Contagem por estrategia_match:")
-    for estrategia, count in df_final['estrategia_match'].value_counts().items():
-        logger.info(f"  {estrategia}: {count}")
+    for col in ('status_cruzamento', 'estrategia_match'):
+        if col in df_final.columns:
+            logger.info(f"Contagem por {col}:")
+            for val, count in df_final[col].value_counts().items():
+                logger.info(f"  {val}: {count}")
 
     logger.info(f"CROSSMATCH CONCLUÍDO: {len(df_final)} registros no resultado final")
     logger.info("=" * 60)
