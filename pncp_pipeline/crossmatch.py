@@ -904,6 +904,95 @@ def carregar_aplic(caminho: Path) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Grid unificado de cobertura
+# ---------------------------------------------------------------------------
+
+def _gerar_grid(df_resultado: pd.DataFrame, cnpjs_municipio: set) -> pd.DataFrame:
+    """
+    Gera tabela-dashboard com uma linha por licitação do município,
+    indicando presença em cada sistema com S/N.
+
+    Colunas:
+        Modalidade | Nº Licitação | Órgão | Objeto | Valor Estimado |
+        No PNCP | No APLIC | No Notify | Status | Score | Data PNCP | Data APLIC
+
+    Cores aplicadas externamente conforme Status:
+        MATCH_CONFIRMADO → verde     (presente nos dois, confirmado)
+        MATCH_PARCIAL    → verde claro (presente nos dois, revisar)
+        SEM_MATCH        → amarelo   (no PNCP, falta no APLIC)
+        APENAS_APLIC     → laranja   (no APLIC, falta no PNCP)
+    """
+    linhas = []
+
+    for _, row in df_resultado.iterrows():
+        status     = row.get('status_cruzamento', '') or ''
+        cnpj_pncp  = str(row.get('orgaoEntidade_cnpj', '') or '')
+
+        # Inclui apenas registros do município de interesse ou APENAS_APLIC
+        if status != 'APENAS_APLIC' and cnpj_pncp not in cnpjs_municipio:
+            continue
+
+        no_pncp  = 'N' if status == 'APENAS_APLIC' else 'S'
+        no_aplic = 'N' if status == 'SEM_MATCH'    else 'S'
+
+        # Campos descritivos: prioriza PNCP quando disponível, fallback APLIC
+        modalidade = (
+            row.get('modalidadeNome') or
+            row.get('Modalidade')     or ''
+        )
+        numero = (
+            row.get('numeroCompra')   or
+            row.get('Nº Licitação')   or ''
+        )
+        orgao = (
+            row.get('unidadeOrgao_nomeUnidade') or
+            row.get('UG')             or ''
+        )
+        objeto = (
+            row.get('objetoCompra')   or
+            row.get('Objetivo')       or
+            row.get('Motivo')         or ''
+        )
+        # Objeto: limita a 200 chars para não poluir a célula
+        objeto = str(objeto)[:200] if objeto else ''
+
+        valor = row.get('valorTotalEstimado') or row.get('Valor Estimado') or ''
+
+        data_pncp  = row.get('dataPublicacaoPncp') or row.get('dataAberturaProposta') or ''
+        data_aplic = row.get('Data Abertura') or ''
+
+        linhas.append({
+            'Modalidade':      str(modalidade)[:60],
+            'Nº Licitação':    str(numero),
+            'Órgão':           str(orgao)[:60],
+            'Objeto':          objeto,
+            'Valor Estimado':  valor,
+            'No PNCP':         no_pncp,
+            'No APLIC':        no_aplic,
+            'No Notify':       '',       # preencher manualmente / integração futura
+            'Status':          status,
+            'Score':           row.get('score_composto') or '',
+            'Data PNCP':       data_pncp,
+            'Data APLIC':      data_aplic,
+        })
+
+    df = pd.DataFrame(linhas)
+
+    # Ordena: primeiro os que têm gap (S/N ou N/S), depois os confirmados
+    ordem = {'APENAS_APLIC': 0, 'SEM_MATCH': 1, 'MATCH_PARCIAL': 2, 'MATCH_CONFIRMADO': 3}
+    if not df.empty:
+        df['_ord'] = df['Status'].map(ordem).fillna(9)
+        df = df.sort_values(['_ord', 'Órgão', 'Nº Licitação']).drop(columns=['_ord'])
+
+    if not df.empty:
+        n_ambos     = ((df['No PNCP'] == 'S') & (df['No APLIC'] == 'S')).sum()
+        n_so_pncp   = ((df['No PNCP'] == 'S') & (df['No APLIC'] == 'N')).sum()
+        n_so_aplic  = ((df['No PNCP'] == 'N') & (df['No APLIC'] == 'S')).sum()
+        logger.info(f"[Grid] {len(df)} licitações | PNCP+APLIC: {n_ambos} | Só PNCP: {n_so_pncp} | Só APLIC: {n_so_aplic}")
+    return df
+
+
+# ---------------------------------------------------------------------------
 # CLI standalone
 # ---------------------------------------------------------------------------
 
@@ -985,6 +1074,11 @@ if __name__ == "__main__":
             linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'registros removidos',   'Qtd': n_dup})
         pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
 
+        # Aba 5 — Grid unificado (dashboard de cobertura por sistema)
+        sinop_cnpjs = {v for (_, mun), v in DE_PARA_UG_CNPJ.items() if mun == 'sinop'}
+        df_grid = _gerar_grid(df_resultado, sinop_cnpjs)
+        df_grid.to_excel(writer, sheet_name='Grid', index=False)
+
         # ── Coloração por origem ──────────────────────────────────────────────
         # Cinza claro = linha vinda do PNCP  |  Branco = linha vinda do APLIC
         from openpyxl.styles import PatternFill
@@ -1013,8 +1107,34 @@ if __name__ == "__main__":
             if sheet_name in writer.sheets:
                 colorir_aba(writer.sheets[sheet_name], status_col_idx=None)
 
+        # Grid: cor por status de cobertura
+        FILL_AMBOS_OK  = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # verde   — confirmado
+        FILL_AMBOS_PAR = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")  # verde claro — parcial
+        FILL_SEM_APLIC = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # amarelo — só PNCP
+        FILL_SEM_PNCP  = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")  # laranja — só APLIC
+
+        ws_grid = writer.sheets['Grid']
+        header_grid = [ws_grid.cell(row=1, column=c).value for c in range(1, ws_grid.max_column + 1)]
+        status_grid_idx = (header_grid.index('Status') + 1) if 'Status' in header_grid else None
+
+        if status_grid_idx:
+            for row_idx in range(2, ws_grid.max_row + 1):
+                status_val = ws_grid.cell(row=row_idx, column=status_grid_idx).value or ''
+                if status_val == 'MATCH_CONFIRMADO':
+                    fill = FILL_AMBOS_OK
+                elif status_val == 'MATCH_PARCIAL':
+                    fill = FILL_AMBOS_PAR
+                elif status_val == 'APENAS_APLIC':
+                    fill = FILL_SEM_PNCP
+                else:  # SEM_MATCH filtrado = só PNCP
+                    fill = FILL_SEM_APLIC
+                for cell in ws_grid.iter_rows(min_row=row_idx, max_row=row_idx,
+                                               min_col=1, max_col=ws_grid.max_column):
+                    for c in cell:
+                        c.fill = fill
+
     print(f"\nResultado exportado para: {saida}")
-    print(f"Abas: Resultados | APLIC_Duplicatas | APLIC_Completo | Resumo")
+    print(f"Abas: Resultados | Grid | APLIC_Duplicatas | APLIC_Completo | Resumo")
     print(f"\nTotal de registros (Resultados): {len(df_resultado)}")
     if 'status_cruzamento' in df_resultado.columns:
         print("\nStatus do cruzamento:")
