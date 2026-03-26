@@ -955,22 +955,19 @@ if __name__ == "__main__":
 
         # Aba 2 — Duplicatas APLIC lado a lado (apenas grupos com >1 registro)
         if not df_aplic_grupos.empty:
-            # Remove colunas auxiliares internas, mantém _dedup_tipo e _dedup_grupo
             cols_aux = [c for c in df_aplic_grupos.columns if c.startswith('_') and c not in ('_dedup_tipo', '_dedup_grupo')]
             df_dup_saida = df_aplic_grupos.drop(columns=cols_aux, errors='ignore')
-            # Renomeia para ser legível
             df_dup_saida = df_dup_saida.rename(columns={
                 '_dedup_tipo':  'Tipo (principal/duplicata)',
                 '_dedup_grupo': 'Grupo',
             })
-            # Coloca identificadores primeiro
             id_cols = ['Grupo', 'Tipo (principal/duplicata)']
             outras_dup = [c for c in df_dup_saida.columns if c not in id_cols]
             df_dup_saida[id_cols + outras_dup].to_excel(
                 writer, sheet_name='APLIC_Duplicatas', index=False
             )
 
-        # Aba 3 — APLIC completo original (todos os 54 registros sem tratamento)
+        # Aba 3 — APLIC completo original
         df_aplic_original.to_excel(writer, sheet_name='APLIC_Completo', index=False)
 
         # Aba 4 — Resumo
@@ -987,6 +984,34 @@ if __name__ == "__main__":
             linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'grupos com duplicatas', 'Qtd': n_grupos})
             linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'registros removidos',   'Qtd': n_dup})
         pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
+
+        # ── Coloração por origem ──────────────────────────────────────────────
+        # Cinza claro = linha vinda do PNCP  |  Branco = linha vinda do APLIC
+        from openpyxl.styles import PatternFill
+        FILL_PNCP  = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
+        FILL_APLIC = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+
+        def colorir_aba(ws, status_col_idx: int | None):
+            """Aplica cor linha a linha. Row 1 = header (não colore)."""
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                if status_col_idx is not None:
+                    status_val = ws.cell(row=row_idx, column=status_col_idx).value or ''
+                    fill = FILL_APLIC if status_val == 'APENAS_APLIC' else FILL_PNCP
+                else:
+                    fill = FILL_APLIC
+                for cell in row:
+                    cell.fill = fill
+
+        # Aba Resultados: usa coluna status_cruzamento para decidir origem
+        ws_res = writer.sheets['Resultados']
+        header_res = [ws_res.cell(row=1, column=c).value for c in range(1, ws_res.max_column + 1)]
+        status_idx = (header_res.index('status_cruzamento') + 1) if 'status_cruzamento' in header_res else None
+        colorir_aba(ws_res, status_idx)
+
+        # APLIC_Duplicatas e APLIC_Completo: sempre branco (origem APLIC)
+        for sheet_name in ('APLIC_Duplicatas', 'APLIC_Completo'):
+            if sheet_name in writer.sheets:
+                colorir_aba(writer.sheets[sheet_name], status_col_idx=None)
 
     print(f"\nResultado exportado para: {saida}")
     print(f"Abas: Resultados | APLIC_Duplicatas | APLIC_Completo | Resumo")
