@@ -364,7 +364,9 @@ def deduplicar_aplic(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     (int sequencial por grupo duplicado), para visualização lado a lado no Excel.
     """
     antes = len(df)
-    chave = ['_numero_puro', '_ano_extraido', '_modalidade_pncp_id']
+    # CNPJ obrigatório na chave: UGs distintas (Câmara, Prefeitura, Previsinop)
+    # têm numeração sequencial independente — nº 001/2026 da Câmara ≠ nº 001/2026 da Prefeitura.
+    chave = ['_cnpj_mapeado', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id']
     chave_existente = [c for c in chave if c in df.columns]
 
     if not chave_existente:
