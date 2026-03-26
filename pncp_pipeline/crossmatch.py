@@ -353,27 +353,43 @@ def deduplicar_pncp(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def deduplicar_aplic(df: pd.DataFrame) -> pd.DataFrame:
+def deduplicar_aplic(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Deduplica o DataFrame APLIC.
     Chave: (número, ano, modalidade_pncp).
     Prioridade: maior valor estimado.
+
+    Retorna (df_dedup, df_grupos) onde df_grupos contém TODOS os registros
+    originais marcados com '_dedup_tipo' (principal / duplicata) e '_dedup_grupo'
+    (int sequencial por grupo duplicado), para visualização lado a lado no Excel.
     """
     antes = len(df)
     chave = ['_numero_puro', '_ano_extraido', '_modalidade_pncp_id']
     chave_existente = [c for c in chave if c in df.columns]
 
     if not chave_existente:
-        return df
+        return df, pd.DataFrame()
 
     df = df.copy()
     df = df.sort_values('_valor_estimado_float', ascending=False, na_position='last')
-    df = df.drop_duplicates(subset=chave_existente, keep='first')
 
-    removidos = antes - len(df)
+    # Identifica grupos duplicados antes de remover
+    df['_dedup_grupo'] = df.groupby(chave_existente, sort=False).ngroup()
+    duplicados_mask = df.duplicated(subset=chave_existente, keep='first')
+    df['_dedup_tipo'] = 'principal'
+    df.loc[duplicados_mask, '_dedup_tipo'] = 'duplicata'
+
+    # Separa apenas grupos que TÊM duplicatas (grupos com >1 membro)
+    grupos_com_dup = df[df['_dedup_grupo'].isin(
+        df[duplicados_mask]['_dedup_grupo'].unique()
+    )].copy().sort_values(['_dedup_grupo', '_dedup_tipo'])
+
+    df_dedup = df[~duplicados_mask].drop(columns=['_dedup_grupo', '_dedup_tipo'])
+
+    removidos = antes - len(df_dedup)
     if removidos:
-        logger.info(f"[APLIC] Deduplicação: {removidos} linhas removidas ({antes} → {len(df)})")
-    return df
+        logger.info(f"[APLIC] Deduplicação: {removidos} linhas removidas ({antes} → {len(df_dedup)})")
+    return df_dedup, grupos_com_dup
 
 
 # ---------------------------------------------------------------------------
@@ -787,7 +803,7 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
 
     # 2. Deduplicação
     df_p = deduplicar_pncp(df_p)
-    df_a = deduplicar_aplic(df_a)
+    df_a, df_aplic_grupos = deduplicar_aplic(df_a)
 
     # 3. Tier 1 — Semântico + Financeiro
     matched_t1, pncp_orfaos, matched_aplic_t1 = _merge_primario(df_p, df_a)
@@ -838,7 +854,7 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
 
     logger.info(f"CROSSMATCH CONCLUÍDO: {len(df_final)} registros no resultado final")
     logger.info("=" * 60)
-    return df_final
+    return df_final, df_aplic_grupos
 
 
 def carregar_aplic(caminho: Path) -> pd.DataFrame:
@@ -909,22 +925,73 @@ if __name__ == "__main__":
         print(f"Arquivo APLIC não encontrado: {aplic_path}")
         sys.exit(1)
 
-    df_pncp = pd.read_excel(pncp_path, dtype=str)
+    df_pncp  = pd.read_excel(pncp_path, dtype=str)
     df_aplic = carregar_aplic(aplic_path)
 
-    df_resultado = crossmatch(df_pncp, df_aplic)
+    # Guarda APLIC original (pré-preparação) para aba APLIC_Completo
+    df_aplic_original = df_aplic.copy()
+
+    df_resultado, df_aplic_grupos = crossmatch(df_pncp, df_aplic)
 
     if df_resultado.empty:
         print("Resultado vazio. Verifique os arquivos de entrada.")
         sys.exit(0)
 
     saida = pncp_path.parent / f"crossmatch_{pncp_path.stem}.xlsx"
-    df_resultado.to_excel(saida, index=False)
+
+    # Colunas de diagnóstico a destacar no início da aba principal
+    cols_diag = [c for c in [
+        'status_cruzamento', 'estrategia_match', 'score_composto',
+        'fuzzy_score', 'delta_percentual', 'delta_dias', 'validacao_financeira'
+    ] if c in df_resultado.columns]
+    outras = [c for c in df_resultado.columns if c not in cols_diag]
+    df_resultado = df_resultado[cols_diag + outras]
+
+    with pd.ExcelWriter(saida, engine='openpyxl') as writer:
+        # Aba 1 — Resultados do cruzamento
+        df_resultado.to_excel(writer, sheet_name='Resultados', index=False)
+
+        # Aba 2 — Duplicatas APLIC lado a lado (apenas grupos com >1 registro)
+        if not df_aplic_grupos.empty:
+            # Remove colunas auxiliares internas, mantém _dedup_tipo e _dedup_grupo
+            cols_aux = [c for c in df_aplic_grupos.columns if c.startswith('_') and c not in ('_dedup_tipo', '_dedup_grupo')]
+            df_dup_saida = df_aplic_grupos.drop(columns=cols_aux, errors='ignore')
+            # Renomeia para ser legível
+            df_dup_saida = df_dup_saida.rename(columns={
+                '_dedup_tipo':  'Tipo (principal/duplicata)',
+                '_dedup_grupo': 'Grupo',
+            })
+            # Coloca identificadores primeiro
+            id_cols = ['Grupo', 'Tipo (principal/duplicata)']
+            outras_dup = [c for c in df_dup_saida.columns if c not in id_cols]
+            df_dup_saida[id_cols + outras_dup].to_excel(
+                writer, sheet_name='APLIC_Duplicatas', index=False
+            )
+
+        # Aba 3 — APLIC completo original (todos os 54 registros sem tratamento)
+        df_aplic_original.to_excel(writer, sheet_name='APLIC_Completo', index=False)
+
+        # Aba 4 — Resumo
+        linhas_resumo = []
+        if 'status_cruzamento' in df_resultado.columns:
+            for status, qtd in df_resultado['status_cruzamento'].value_counts().items():
+                linhas_resumo.append({'Categoria': 'status_cruzamento', 'Valor': status, 'Qtd': qtd})
+        if 'estrategia_match' in df_resultado.columns:
+            for est, qtd in df_resultado['estrategia_match'].value_counts().items():
+                linhas_resumo.append({'Categoria': 'estrategia_match', 'Valor': est, 'Qtd': qtd})
+        if not df_aplic_grupos.empty:
+            n_grupos = df_aplic_grupos['_dedup_grupo'].nunique()
+            n_dup    = (df_aplic_grupos['_dedup_tipo'] == 'duplicata').sum()
+            linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'grupos com duplicatas', 'Qtd': n_grupos})
+            linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'registros removidos',   'Qtd': n_dup})
+        pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
+
     print(f"\nResultado exportado para: {saida}")
-    print(f"Total de registros: {len(df_resultado)}")
+    print(f"Abas: Resultados | APLIC_Duplicatas | APLIC_Completo | Resumo")
+    print(f"\nTotal de registros (Resultados): {len(df_resultado)}")
     if 'status_cruzamento' in df_resultado.columns:
         print("\nStatus do cruzamento:")
         print(df_resultado['status_cruzamento'].value_counts().to_string())
-    if 'estrategia_match' in df_resultado.columns:
-        print("\nEstratégia de match:")
-        print(df_resultado['estrategia_match'].value_counts().to_string())
+    if not df_aplic_grupos.empty:
+        n_dup = (df_aplic_grupos['_dedup_tipo'] == 'duplicata').sum()
+        print(f"\nAPLIC_Duplicatas: {n_dup} registros duplicados em {df_aplic_grupos['_dedup_grupo'].nunique()} grupos")
