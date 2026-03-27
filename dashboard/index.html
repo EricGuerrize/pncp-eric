@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor PNCP × APLIC — Sinop/MT</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    header {
+      background: #1a3a6b;
+      color: #fff;
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .3px; }
+    header .sub { font-size: .8rem; opacity: .75; margin-top: 2px; }
+    #ultima-atualizacao { font-size: .78rem; opacity: .7; text-align: right; }
+
+    /* ── Filtro ───────────────────────────────────────────── */
+    .toolbar {
+      background: #fff;
+      border-bottom: 1px solid #dde1ea;
+      padding: 10px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .toolbar label { font-size: .85rem; font-weight: 500; color: #555; }
+    .toolbar select {
+      border: 1px solid #c5cad8;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: .85rem;
+      background: #fff;
+      cursor: pointer;
+    }
+    #btn-refresh {
+      margin-left: auto;
+      background: #1a3a6b;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: .83rem;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    #btn-refresh:hover { background: #245093; }
+
+    /* ── Cards ───────────────────────────────────────────── */
+    .cards {
+      display: flex;
+      gap: 16px;
+      padding: 24px 32px 8px;
+      flex-wrap: wrap;
+    }
+    .card {
+      flex: 1;
+      min-width: 170px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 18px 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      border-left: 5px solid #ccc;
+    }
+    .card.verde  { border-left-color: #28a745; }
+    .card.amarelo{ border-left-color: #ffc107; }
+    .card.laranja{ border-left-color: #fd7e14; }
+    .card.vermelho{ border-left-color: #dc3545; }
+    .card .num { font-size: 2.2rem; font-weight: 700; line-height: 1; }
+    .card.verde  .num { color: #28a745; }
+    .card.amarelo .num { color: #e6a800; }
+    .card.laranja .num { color: #fd7e14; }
+    .card.vermelho .num { color: #dc3545; }
+    .card .label { font-size: .78rem; color: #666; margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .card .desc  { font-size: .72rem; color: #999; margin-top: 3px; }
+
+    /* ── Tabs ────────────────────────────────────────────── */
+    .tabs-wrap { padding: 16px 32px 0; }
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      border-bottom: 2px solid #dde1ea;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 9px 20px;
+      font-size: .88rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: #666;
+      border-radius: 6px 6px 0 0;
+      transition: background .1s, color .1s;
+    }
+    .tab-btn:hover { background: #e8edf5; color: #1a3a6b; }
+    .tab-btn.active {
+      background: #fff;
+      color: #1a3a6b;
+      border: 2px solid #dde1ea;
+      border-bottom: 2px solid #fff;
+      margin-bottom: -2px;
+    }
+    .tab-btn .badge {
+      display: inline-block;
+      background: #e8edf5;
+      color: #1a3a6b;
+      border-radius: 10px;
+      font-size: .7rem;
+      padding: 1px 7px;
+      margin-left: 5px;
+      font-weight: 600;
+    }
+    .tab-btn.active .badge { background: #1a3a6b; color: #fff; }
+
+    /* ── Tabela ──────────────────────────────────────────── */
+    .tab-content {
+      background: #fff;
+      border: 1px solid #dde1ea;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+    }
+    thead tr { background: #f5f7fb; }
+    th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #444;
+      border-bottom: 2px solid #dde1ea;
+      white-space: nowrap;
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #eef0f4;
+      vertical-align: top;
+    }
+    tbody tr:hover { background: #f8f9fc; }
+    tbody tr:last-child td { border-bottom: none; }
+
+    /* Alertas */
+    tbody tr.alerta td { background: #fff5f5; }
+    tbody tr.alerta:hover td { background: #ffeaea; }
+    .badge-alerta {
+      background: #dc3545;
+      color: #fff;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .3px;
+    }
+
+    /* Score */
+    .score-pill {
+      display: inline-block;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .score-alto   { background: #d4edda; color: #155724; }
+    .score-medio  { background: #fff3cd; color: #856404; }
+    .score-baixo  { background: #f8d7da; color: #721c24; }
+
+    /* Status badges */
+    .chip {
+      display: inline-block;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: .72rem;
+      font-weight: 600;
+    }
+    .chip-s { background: #d4edda; color: #155724; }
+    .chip-n { background: #f8d7da; color: #721c24; }
+    .chip-p { background: #fff3cd; color: #856404; }
+
+    /* Loading / empty */
+    .state-msg {
+      padding: 48px;
+      text-align: center;
+      color: #999;
+      font-size: .9rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 22px; height: 22px;
+      border: 3px solid #dde1ea;
+      border-top-color: #1a3a6b;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .obj-cell { max-width: 320px; }
+    .obj-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Monitor PNCP × APLIC</h1>
+    <div class="sub">Sinop — Mato Grosso · 2026</div>
+  </div>
+  <div id="ultima-atualizacao">Carregando…</div>
+</header>
+
+<div class="toolbar">
+  <label for="filtro-orgao">Órgão:</label>
+  <select id="filtro-orgao">
+    <option value="">Todos</option>
+    <option value="Prefeitura Municipal de Sinop">Prefeitura</option>
+    <option value="Câmara Municipal de Sinop">Câmara</option>
+    <option value="INSTITUTO DE PREVIDENCIA DE SINOP">IPREV</option>
+  </select>
+  <button id="btn-refresh" onclick="init()">↻ Atualizar</button>
+</div>
+
+<div class="cards">
+  <div class="card verde">
+    <div class="num" id="cnt-ambos">—</div>
+    <div class="label">Em Ambos</div>
+    <div class="desc">PNCP + APLIC ✓</div>
+  </div>
+  <div class="card amarelo">
+    <div class="num" id="cnt-pncp">—</div>
+    <div class="label">Apenas PNCP</div>
+    <div class="desc">Aguardando APLIC</div>
+  </div>
+  <div class="card laranja">
+    <div class="num" id="cnt-aplic">—</div>
+    <div class="label">Apenas APLIC</div>
+    <div class="desc">Sem publicação no PNCP</div>
+  </div>
+  <div class="card vermelho">
+    <div class="num" id="cnt-alertas">—</div>
+    <div class="label">Alertas Ativos</div>
+    <div class="desc">Prazo APLIC vencido</div>
+  </div>
+</div>
+
+<div class="tabs-wrap">
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('ambos', this)">
+      Em Ambos <span class="badge" id="badge-ambos">—</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)">
+      Apenas PNCP <span class="badge" id="badge-pncp">—</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)">
+      Apenas APLIC <span class="badge" id="badge-aplic">—</span>
+    </button>
+  </nav>
+
+  <div class="tab-content">
+    <div class="table-wrap">
+      <div id="table-container">
+        <div class="state-msg"><div class="spinner"></div><br>Conectando ao Firebase…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDK (CDN compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCebpTydztL6cKSjDKFOP8LVWI6CCYH9g0",
+  authDomain: "pncp-monitor-b3c5f.firebaseapp.com",
+  projectId: "pncp-monitor-b3c5f",
+  storageBucket: "pncp-monitor-b3c5f.firebasestorage.app",
+  messagingSenderId: "995357658004",
+  appId: "1:995357658004:web:6e1d404318dc251dbf9d81"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const MUNICIPIO = "sinop";
+
+// ── Estado ─────────────────────────────────────────────────────────────────
+let abaAtiva = "ambos";
+let orgaoFiltro = "";
+let cache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+
+// ── Utilitários ────────────────────────────────────────────────────────────
+function fmt(val) {
+  if (val == null || val === "") return "—";
+  if (val && val.toDate) val = val.toDate();
+  if (val instanceof Date) return val.toLocaleDateString("pt-BR");
+  if (typeof val === "number") return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return String(val);
+}
+
+function fmtValor(val) {
+  if (val == null || val === "" || val === "nan") return "—";
+  const n = parseFloat(val);
+  if (isNaN(n)) return "—";
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fmtData(ts) {
+  if (!ts) return "—";
+  try {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString("pt-BR");
+  } catch { return "—"; }
+}
+
+function scoreClass(s) {
+  const n = parseFloat(s);
+  if (isNaN(n)) return "";
+  if (n >= 85) return "score-alto";
+  if (n >= 70) return "score-medio";
+  return "score-baixo";
+}
+
+function orgaoMatch(doc) {
+  if (!orgaoFiltro) return true;
+  const orgao = (doc.orgao || "").toLowerCase();
+  return orgao.includes(orgaoFiltro.toLowerCase());
+}
+
+// ── Carrega dados do Firestore ──────────────────────────────────────────────
+async function carregarSub(sub) {
+  if (cache[sub]) return cache[sub];
+  const snap = await db
+    .collection("municipios").doc(MUNICIPIO)
+    .collection(sub)
+    .orderBy("atualizadoEm", "desc")
+    .get();
+  cache[sub] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return cache[sub];
+}
+
+async function updateCards() {
+  const [ambos, pncp, aplic] = await Promise.all([
+    carregarSub("ambos"),
+    carregarSub("apenas_pncp"),
+    carregarSub("apenas_aplic"),
+  ]);
+
+  document.getElementById("cnt-ambos").textContent  = ambos.length;
+  document.getElementById("cnt-pncp").textContent   = pncp.length;
+  document.getElementById("cnt-aplic").textContent  = aplic.length;
+  document.getElementById("badge-ambos").textContent = ambos.length;
+  document.getElementById("badge-pncp").textContent  = pncp.length;
+  document.getElementById("badge-aplic").textContent = aplic.length;
+
+  const alertas = pncp.filter(d => d.alertaAtivo).length;
+  document.getElementById("cnt-alertas").textContent = alertas;
+
+  // Última atualização
+  const todas = [...ambos, ...pncp, ...aplic];
+  let ultima = null;
+  todas.forEach(d => {
+    if (!d.atualizadoEm) return;
+    const t = d.atualizadoEm.toDate ? d.atualizadoEm.toDate() : new Date(d.atualizadoEm);
+    if (!ultima || t > ultima) ultima = t;
+  });
+  document.getElementById("ultima-atualizacao").textContent =
+    ultima ? "Atualizado em " + ultima.toLocaleString("pt-BR") : "";
+}
+
+// ── Renderiza tabelas ───────────────────────────────────────────────────────
+function renderAmbos(docs) {
+  const filtrados = docs.filter(orgaoMatch);
+  if (!filtrados.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+
+  const rows = filtrados.map(d => `
+    <tr>
+      <td>${d.orgao || "—"}</td>
+      <td>${d.modalidade || "—"}</td>
+      <td>${d.numero || "—"}/${d.ano || "—"}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
+        ${d.objeto || "—"}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td><span class="score-pill ${scoreClass(d.score_cruzamento)}">${d.score_cruzamento ? parseFloat(d.score_cruzamento).toFixed(0) : "—"}</span></td>
+      <td style="white-space:nowrap">${fmtData(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtData(d.dataAPLIC) !== "—" ? fmtData(d.dataAPLIC) : (d.dataAberturaAplic ? fmtData(d.dataAberturaAplic) : "—")}</td>
+      <td>${d.estrategia_match || "—"}</td>
+    </tr>`).join("");
+
+  return `<table>
+    <thead><tr>
+      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+      <th>Valor</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderApenasPncp(docs) {
+  const filtrados = docs.filter(orgaoMatch);
+  if (!filtrados.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+
+  const rows = filtrados.map(d => `
+    <tr class="${d.alertaAtivo ? 'alerta' : ''}">
+      <td>${d.orgao || "—"}</td>
+      <td>${d.modalidade || "—"}</td>
+      <td>${d.numero || "—"}/${d.ano || "—"}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
+        ${d.objeto || "—"}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtData(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtData(d.prazoAplic)}</td>
+      <td>${d.alertaAtivo ? '<span class="badge-alerta">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
+    </tr>`).join("");
+
+  return `<table>
+    <thead><tr>
+      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+      <th>Valor</th><th>Data PNCP</th><th>Prazo APLIC</th><th>Status APLIC</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderApenasAplic(docs) {
+  const filtrados = docs.filter(orgaoMatch);
+  if (!filtrados.length) return '<div class="state-msg">Nenhum registro nesta categoria.</div>';
+
+  const rows = filtrados.map(d => `
+    <tr>
+      <td>${d.orgao || "—"}</td>
+      <td>${d.modalidade || "—"}</td>
+      <td>${d.numero || "—"}/${d.ano || "—"}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
+        ${d.objeto || "—"}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtData(d.dataAPLIC)}</td>
+      <td><span class="chip chip-n">Sem PNCP</span></td>
+    </tr>`).join("");
+
+  return `<table>
+    <thead><tr>
+      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+      <th>Valor</th><th>Data APLIC</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── Troca de aba ───────────────────────────────────────────────────────────
+async function switchTab(sub, btn) {
+  abaAtiva = sub;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  await renderTab();
+}
+
+async function renderTab() {
+  const container = document.getElementById("table-container");
+  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+
+  try {
+    const docs = await carregarSub(abaAtiva);
+    if (abaAtiva === "ambos")        container.innerHTML = renderAmbos(docs);
+    else if (abaAtiva === "apenas_pncp") container.innerHTML = renderApenasPncp(docs);
+    else                             container.innerHTML = renderApenasAplic(docs);
+  } catch (e) {
+    container.innerHTML = `<div class="state-msg">Erro ao carregar dados: ${e.message}</div>`;
+    console.error(e);
+  }
+}
+
+// ── Filtro ────────────────────────────────────────────────────────────────
+document.getElementById("filtro-orgao").addEventListener("change", e => {
+  orgaoFiltro = e.target.value;
+  renderTab();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  cache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+  await Promise.all([updateCards(), renderTab()]);
+}
+
+init();
+</script>
+</body>
+</html>
