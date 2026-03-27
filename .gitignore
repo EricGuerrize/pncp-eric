@@ -9,4 +9,5 @@ pncp_pipeline/logs/
 firebase_credentials.json
 *_credentials.json
 *serviceAccount*.json
+*firebase-adminsdk*.json
 
