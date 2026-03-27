@@ -395,19 +395,24 @@ function renderAmbos(docs) {
       <td>${d.orgao || "—"}</td>
       <td>${d.modalidade || "—"}</td>
       <td>${d.numero || "—"}/${d.ano || "—"}</td>
-      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
-        ${d.objeto || "—"}</div></td>
-      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td class="obj-cell">
+        <div class="obj-text" title="PNCP: ${(d.objeto||"").replace(/"/g,"'")}"><strong>PNCP:</strong> ${d.objeto || "—"}</div>
+        ${d.objeto_aplic ? `<div class="obj-text" style="color:#555;margin-top:3px" title="APLIC: ${(d.objeto_aplic||"").replace(/"/g,"'")}"><strong>APLIC:</strong> ${d.objeto_aplic}</div>` : ""}
+      </td>
+      <td style="white-space:nowrap">
+        <div>${fmtValor(d.valor)}</div>
+        ${d.valor_aplic ? `<div style="color:#555;font-size:.75rem">${fmtValor(d.valor_aplic)}</div>` : ""}
+      </td>
       <td><span class="score-pill ${scoreClass(d.score_cruzamento)}">${d.score_cruzamento ? parseFloat(d.score_cruzamento).toFixed(0) : "—"}</span></td>
       <td style="white-space:nowrap">${fmtData(d.dataPNCP)}</td>
-      <td style="white-space:nowrap">${fmtData(d.dataAPLIC) !== "—" ? fmtData(d.dataAPLIC) : (d.dataAberturaAplic ? fmtData(d.dataAberturaAplic) : "—")}</td>
-      <td>${d.estrategia_match || "—"}</td>
+      <td style="white-space:nowrap">${fmtData(d.dataAPLIC)}</td>
+      <td style="font-size:.75rem;color:#666">${d.estrategia_match || "—"}</td>
     </tr>`).join("");
 
   return `<table>
     <thead><tr>
-      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
-      <th>Valor</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th>
+      <th>Órgão PNCP</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto (PNCP / APLIC)</th>
+      <th>Valor (PNCP / APLIC)</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;

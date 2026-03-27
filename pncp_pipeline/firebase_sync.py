@@ -282,16 +282,54 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame) -> dict:
             snap_pncp = col_apenas_pncp.document(doc_id).get()
             dados_base = snap_pncp.to_dict() if snap_pncp.exists else {}
 
-            doc_ambos = {
-                **dados_base,
-                "statusAPLIC":       "S",
-                "alertaAtivo":       False,
-                "score_cruzamento":  row.get("score_composto", ""),
-                "estrategia_match":  str(row.get("estrategia_match") or ""),
-                "orgao_aplic":       str(row.get("_orgao_nome") or "")[:80],
-                "objeto_aplic":      str(row.get("_objetivo_norm") or "")[:300],
-                "atualizadoEm":      SERVER_TIMESTAMP,
-            }
+            import re as _re
+
+        def _dt(val):
+            if not val or str(val).strip() in ("", "nan"): return None
+            try:
+                d = pd.to_datetime(val, errors="coerce")
+                if pd.isna(d): return None
+                d = d.to_pydatetime()
+                if hasattr(d, "tzinfo") and d.tzinfo: d = d.replace(tzinfo=None)
+                return d
+            except: return None
+
+        def _fval(val):
+            if not val or str(val).strip() in ("", "nan"): return None
+            try: return float(str(val).replace("R$","").replace(".","").replace(",",".").strip())
+            except: return None
+
+        data_pncp = _dt(row.get("dataPublicacaoPncp") or row.get("dataAberturaProposta"))
+        prazo_aplic = _adicionar_dias_uteis(data_pncp, 3) if data_pncp else None
+
+        # Monta documento completo com dados PNCP + APLIC
+        doc_ambos = {
+            **dados_base,
+            # — PNCP —
+            "municipio":        MUNICIPIO_NOME,
+            "orgao":            str(row.get("unidadeOrgao_nomeUnidade") or dados_base.get("orgao", ""))[:80],
+            "modalidade":       str(row.get("modalidadeNome") or dados_base.get("modalidade", ""))[:60],
+            "numero":           str(row.get("numeroCompra") or dados_base.get("numero", "")),
+            "ano":              str(row.get("anoCompra") or dados_base.get("ano", "")),
+            "objeto":           str(row.get("objetoCompra") or dados_base.get("objeto", ""))[:300],
+            "valor":            _fval(row.get("valorTotalEstimado") or row.get("valorTotalHomologado")) or dados_base.get("valor"),
+            "cnpj":             _re.sub(r"\D","", str(row.get("orgaoEntidade_cnpj") or dados_base.get("cnpj",""))),
+            "dataPNCP":         data_pncp or dados_base.get("dataPNCP"),
+            "prazoAplic":       prazo_aplic or dados_base.get("prazoAplic"),
+            "statusPNCP":       "S",
+            # — APLIC (colunas reais do Excel de crossmatch) —
+            "orgao_aplic":      str(row.get("UG") or row.get("_orgao_nome") or "")[:80],
+            "numero_aplic":     str(row.get("Nº Licitação") or ""),
+            "objeto_aplic":     str(row.get("Objetivo") or row.get("Motivo") or row.get("_objetivo_norm") or "")[:300],
+            "valor_aplic":      _fval(row.get("Valor Estimado")),
+            "dataAPLIC":        _dt(row.get("Data Abertura")),
+            # — cruzamento —
+            "statusAPLIC":      "S",
+            "alertaAtivo":      False,
+            "score_cruzamento": str(row.get("score_composto") or ""),
+            "estrategia_match": str(row.get("estrategia_match") or ""),
+            "atualizadoEm":     SERVER_TIMESTAMP,
+        }
 
             col_ambos.document(doc_id).set(doc_ambos)
 
