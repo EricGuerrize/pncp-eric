@@ -187,6 +187,66 @@ def sincronizar(df_pncp: pd.DataFrame, data_ref: str) -> dict:
     return {"inseridos": inseridos, "atualizados": atualizados, "alertas": alertas}
 
 
+def sincronizar_aplic(df_crossmatch: pd.DataFrame) -> dict:
+    """
+    Atualiza statusAPLIC no Firestore com base no resultado do crossmatch.
+
+    Para cada registro MATCH_CONFIRMADO ou MATCH_PARCIAL:
+      - Localiza o documento pelo numeroControlePNCP + data de publicação
+      - Atualiza statusAPLIC = "enviado" e alertaAtivo = False
+
+    df_crossmatch deve conter as colunas:
+        numeroControlePNCP, dataPublicacaoPncp, status_cruzamento
+    """
+    from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+
+    db = _inicializar_firebase()
+    raiz = db.collection(COLECAO_RAIZ).document(MUNICIPIO_NOME)
+
+    matched_status = {"MATCH_CONFIRMADO", "MATCH_PARCIAL"}
+    df_matched = df_crossmatch[
+        df_crossmatch["status_cruzamento"].isin(matched_status)
+    ].copy()
+
+    logger.info(f"[Firebase APLIC] {len(df_matched)} registros matched para atualizar")
+
+    atualizados = nao_encontrados = 0
+
+    for _, row in df_matched.iterrows():
+        doc_id = str(row.get("numeroControlePNCP") or "").strip().replace("/", "_")
+        if not doc_id:
+            continue
+
+        # Determina a subcoleção pela data de publicação
+        data_raw = row.get("dataPublicacaoPncp") or ""
+        try:
+            data_ref = pd.to_datetime(data_raw, errors="coerce").strftime("%Y%m%d")
+        except Exception:
+            continue
+
+        ref  = raiz.collection(data_ref).document(doc_id)
+        snap = ref.get()
+
+        if snap.exists:
+            ref.update({
+                "statusAPLIC":  "enviado",
+                "alertaAtivo":  False,
+                "atualizadoEm": SERVER_TIMESTAMP,
+            })
+            atualizados += 1
+            logger.info(f"  [✓] APLIC enviado: {doc_id}")
+        else:
+            # Documento não está no Firestore (data fora do backfill ou CNPJ não mapeado)
+            nao_encontrados += 1
+            logger.debug(f"  [?] Não encontrado: {doc_id} / {data_ref}")
+
+    logger.info(
+        f"[Firebase APLIC] Concluído: {atualizados} atualizados | "
+        f"{nao_encontrados} não encontrados no Firestore"
+    )
+    return {"atualizados": atualizados, "nao_encontrados": nao_encontrados}
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -200,7 +260,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sincroniza PNCP D-1 com Firebase")
     parser.add_argument("--date", metavar="YYYYMMDD",
                         help="Data a processar (padrão: ontem)")
+    parser.add_argument("--sync-aplic", metavar="XLSX",
+                        help="Excel de crossmatch para atualizar statusAPLIC no Firestore")
     args = parser.parse_args()
+
+    # Modo: atualizar statusAPLIC a partir de crossmatch
+    if args.sync_aplic:
+        logger.info(f"Atualizando statusAPLIC a partir de: {args.sync_aplic}")
+        df_cross = pd.read_excel(args.sync_aplic, dtype=str)
+        resultado = sincronizar_aplic(df_cross)
+        print(f"\nFirestore APLIC atualizado:")
+        print(f"  Atualizados:      {resultado['atualizados']}")
+        print(f"  Não encontrados:  {resultado['nao_encontrados']}")
+        raise SystemExit(0)
 
     if args.date:
         data_alvo = args.date
