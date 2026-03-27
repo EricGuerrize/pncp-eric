@@ -4,6 +4,7 @@ firebase_sync.py — Sincroniza registros PNCP do dia anterior com o Firestore.
 Uso standalone:
     python firebase_sync.py                        # D-1 automático
     python firebase_sync.py --date 20260325        # data específica
+    python firebase_sync.py --sync-aplic <xlsx>    # atualiza statusAPLIC após crossmatch
 
 Fluxo:
   1. Roda o pipeline PNCP para D-1 (ou data fornecida)
@@ -12,14 +13,18 @@ Fluxo:
   4. Para registros já existentes → atualiza apenas campos PNCP (não sobrescreve APLIC)
   5. Marca alertaAtivo=True nos registros com prazo vencido e APLIC ainda pendente
 
-Firestore — coleção: licitacoes/{municipio}/{numeroControlePNCP}
-    municipio, orgao, modalidade, numero, ano,
-    objeto, valor,
-    dataPNCP, prazoAplic,
-    statusPNCP:  "S"
-    statusAPLIC: "pendente"   ← atualizado manualmente / futura integração Oracle
-    alertaAtivo: False → True quando prazoAplic < hoje e statusAPLIC == "pendente"
-    criadoEm, atualizadoEm
+Estrutura no Firestore:
+    municipios/                         ← coleção: um documento por cidade
+      sinop/                            ← documento do município
+        licitacoes/                     ← subcoleção: todas as licitações da cidade
+          {numeroControlePNCP}/         ← documento individual da licitação
+            municipio, orgao, modalidade, numero, ano
+            objeto, valor, cnpj
+            dataPNCP, prazoAplic        ← prazo = dataPNCP + 3 dias úteis
+            statusPNCP:  "S"
+            statusAPLIC: "pendente" | "enviado"
+            alertaAtivo: false → true quando prazoAplic < hoje e statusAPLIC == "pendente"
+            criadoEm, atualizadoEm
 """
 
 import argparse
@@ -35,8 +40,9 @@ logger = logging.getLogger(__name__)
 # Configuração
 # ---------------------------------------------------------------------------
 
-CREDENTIALS_PATH = Path(__file__).resolve().parent.parent / "firebase_credentials.json"
-COLECAO_RAIZ     = "licitacoes"
+CREDENTIALS_PATH  = Path(__file__).resolve().parent.parent / "firebase_credentials.json"
+COLECAO_MUNICIPIOS = "municipios"   # coleção raiz: um doc por cidade
+COLECAO_LICITACOES = "licitacoes"   # subcoleção dentro de cada município
 
 # CNPJs do município a monitorar (Sinop) — espelha DE_PARA_UG_CNPJ do crossmatch
 MUNICIPIO_NOME = "sinop"
@@ -135,7 +141,9 @@ def sincronizar(df_pncp: pd.DataFrame, data_ref: str) -> dict:
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
     db = _inicializar_firebase()
-    colecao = db.collection(COLECAO_RAIZ).document(MUNICIPIO_NOME).collection(data_ref)
+    colecao = (db.collection(COLECAO_MUNICIPIOS)
+                 .document(MUNICIPIO_NOME)
+                 .collection(COLECAO_LICITACOES))
 
     # Filtra apenas registros do município
     mask = df_pncp["orgaoEntidade_cnpj"].astype(str).isin(CNPJS_MUNICIPIO)
@@ -201,7 +209,9 @@ def sincronizar_aplic(df_crossmatch: pd.DataFrame) -> dict:
     from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
     db = _inicializar_firebase()
-    raiz = db.collection(COLECAO_RAIZ).document(MUNICIPIO_NOME)
+    colecao = (db.collection(COLECAO_MUNICIPIOS)
+                 .document(MUNICIPIO_NOME)
+                 .collection(COLECAO_LICITACOES))
 
     matched_status = {"MATCH_CONFIRMADO", "MATCH_PARCIAL"}
     df_matched = df_crossmatch[
@@ -217,14 +227,7 @@ def sincronizar_aplic(df_crossmatch: pd.DataFrame) -> dict:
         if not doc_id:
             continue
 
-        # Determina a subcoleção pela data de publicação
-        data_raw = row.get("dataPublicacaoPncp") or ""
-        try:
-            data_ref = pd.to_datetime(data_raw, errors="coerce").strftime("%Y%m%d")
-        except Exception:
-            continue
-
-        ref  = raiz.collection(data_ref).document(doc_id)
+        ref  = colecao.document(doc_id)
         snap = ref.get()
 
         if snap.exists:
@@ -236,9 +239,8 @@ def sincronizar_aplic(df_crossmatch: pd.DataFrame) -> dict:
             atualizados += 1
             logger.info(f"  [✓] APLIC enviado: {doc_id}")
         else:
-            # Documento não está no Firestore (data fora do backfill ou CNPJ não mapeado)
             nao_encontrados += 1
-            logger.debug(f"  [?] Não encontrado: {doc_id} / {data_ref}")
+            logger.debug(f"  [?] Não encontrado no Firestore: {doc_id}")
 
     logger.info(
         f"[Firebase APLIC] Concluído: {atualizados} atualizados | "
