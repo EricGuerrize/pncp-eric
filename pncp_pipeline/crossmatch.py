@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 import json
 
-# DE-PARA: (cod_ug, municipio_normalizado) → CNPJ (14 dígitos sem formatação)
-DE_PARA_UG_CNPJ: dict[tuple[str, str], str] = {}
+# DE-PARA: (cod_ug, municipio_normalizado) → {cnpj: str, nome: str}
+DE_PARA_UG_INFO: dict[tuple[str, str], dict] = {}
 
 def load_orgaos():
     json_path = Path(__file__).resolve().parent / "input" / "orgaos.json"
@@ -42,7 +42,10 @@ def load_orgaos():
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             for item in data:
-                DE_PARA_UG_CNPJ[(item["ug"], item["municipio"])] = item["cnpj"]
+                DE_PARA_UG_INFO[(item["ug"], item["municipio"])] = {
+                    "cnpj": item["cnpj"],
+                    "nome": item["nome"]
+                }
 
 load_orgaos()
 
@@ -172,12 +175,12 @@ def converter_valor_br(texto) -> float | None:
         return None
 
 
-def mapear_ug_para_cnpj(cod_ug, municipio: str) -> str | None:
+def mapear_ug(cod_ug, municipio: str) -> dict | None:
     """Lookup no DE-PARA via (cod_ug, municipio_normalizado)."""
     if not cod_ug or str(cod_ug).strip() == '':
         return None
     chave = (str(cod_ug).strip(), normalizar_texto(municipio))
-    return DE_PARA_UG_CNPJ.get(chave)
+    return DE_PARA_UG_INFO.get(chave)
 
 
 def mapear_modalidade_aplic_para_pncp(cod_mod: str) -> int | None:
@@ -272,11 +275,16 @@ def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
         None
     )
     if col_ug and col_municipio:
-        df['_cnpj_mapeado'] = df.apply(
-            lambda r: mapear_ug_para_cnpj(r[col_ug], r[col_municipio]), axis=1
+        # Mapeamento do órgão (CNPJ e Nome Amigável)
+        df['_info_mapeada'] = df.apply(
+            lambda r: mapear_ug(r[col_ug], r[col_municipio]), axis=1
         )
+        df['_cnpj_mapeado'] = df['_info_mapeada'].apply(lambda x: x['cnpj'] if x else None)
+        df['_orgao_nome']   = df['_info_mapeada'].apply(lambda x: x['nome'] if x else None)
+        df = df.drop(columns=['_info_mapeada'])
     else:
         df['_cnpj_mapeado'] = None
+        df['_orgao_nome']   = None
         logger.warning("Colunas Cód. UG ou Município não encontradas no APLIC.")
 
     # Mapeia modalidade → float64 para join sem problemas de tipo
@@ -954,7 +962,8 @@ def _gerar_grid(df_resultado: pd.DataFrame, cnpjs_municipio: set) -> pd.DataFram
         )
         orgao = (
             row.get('unidadeOrgao_nomeUnidade') or
-            row.get('UG')             or ''
+            row.get('_orgao_nome')              or
+            row.get('UG')                       or ''
         )
         objeto = (
             row.get('objetoCompra')   or
