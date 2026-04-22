@@ -203,6 +203,14 @@ def sincronizar(df_pncp: pd.DataFrame, data_ref: str = "") -> dict:
 
     for municipio_raw, df_mun in df_pncp.groupby(COL_MUNICIPIO):
         municipio_slug = _slug_municipio(str(municipio_raw))
+
+        # Cria/atualiza documento pai para que o município apareça ao listar a coleção
+        from google.cloud.firestore_v1 import SERVER_TIMESTAMP as _STS
+        db.collection(COLECAO_MUNICIPIOS).document(municipio_slug).set(
+            {"nome": str(municipio_raw), "slug": municipio_slug, "ultimaSync": _STS},
+            merge=True,
+        )
+
         col_apenas_pncp = _sub(db, municipio_slug, SUB_APENAS_PNCP)
         col_ambos       = _sub(db, municipio_slug, SUB_AMBOS)
 

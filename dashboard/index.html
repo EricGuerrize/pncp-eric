@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Monitor PNCP × APLIC — Sinop/MT</title>
+  <title>Monitor PNCP × APLIC</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -18,21 +18,151 @@
     header {
       background: #1a3a6b;
       color: #fff;
-      padding: 18px 32px;
+      padding: 14px 32px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      gap: 16px;
     }
-    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .3px; }
-    header .sub { font-size: .8rem; opacity: .75; margin-top: 2px; }
-    #ultima-atualizacao { font-size: .78rem; opacity: .7; text-align: right; }
+    header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: .3px; }
+    header .sub { font-size: .78rem; opacity: .75; margin-top: 2px; }
+    .header-right { display: flex; align-items: center; gap: 20px; }
+    #ultima-atualizacao { font-size: .75rem; opacity: .65; text-align: right; white-space: nowrap; }
 
-    /* ── Filtro ───────────────────────────────────────────── */
+    /* ── Painel de Análise ────────────────────────────────── */
+    .painel {
+      background: #fff;
+      border-bottom: 2px solid #c5cad8;
+    }
+    .painel-header {
+      padding: 11px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      font-size: .88rem;
+      font-weight: 600;
+      color: #1a3a6b;
+      border-bottom: 1px solid #eef0f4;
+      transition: background .1s;
+    }
+    .painel-header:hover { background: #f5f7fb; }
+    .painel-header .tag {
+      display: inline-block;
+      background: #e8edf5;
+      color: #1a3a6b;
+      border-radius: 10px;
+      font-size: .68rem;
+      padding: 2px 8px;
+      margin-left: 8px;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    #painel-body { display: none; padding: 20px 32px 24px; }
+    #painel-body.open { display: block; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 768px) { .steps { grid-template-columns: 1fr; } }
+
+    .step {
+      border: 1.5px solid #dde1ea;
+      border-radius: 10px;
+      padding: 16px;
+      background: #fafbfd;
+      transition: border-color .2s;
+    }
+    .step.active { border-color: #1a3a6b; background: #f5f7fb; }
+    .step.done   { border-color: #28a745; background: #f8fff9; }
+    .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #dde1ea;
+      color: #666;
+      font-size: .8rem;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step.active .step-num { background: #1a3a6b; color: #fff; }
+    .step.done   .step-num { background: #28a745; color: #fff; }
+    .step-title { font-weight: 600; font-size: .88rem; color: #333; }
+
+    .step-body { display: flex; flex-direction: column; gap: 8px; }
+    .date-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .date-row label { font-size: .78rem; color: #555; }
+    .date-row input[type=date] {
+      border: 1px solid #c5cad8;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: .8rem;
+      background: #fff;
+      width: 140px;
+    }
+
+    .btn { border: none; border-radius: 6px; padding: 7px 14px; font-size: .82rem; cursor: pointer; font-weight: 500; transition: background .15s, opacity .15s; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: #1a3a6b; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #245093; }
+    .btn-success { background: #28a745; color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #1e7e34; }
+    .btn-outline { background: #fff; border: 1.5px solid #1a3a6b; color: #1a3a6b; }
+    .btn-outline:hover:not(:disabled) { background: #f0f4fa; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .file-btn {
+      display: inline-block;
+      background: #fff;
+      border: 1.5px solid #1a3a6b;
+      color: #1a3a6b;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: .82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .file-btn:hover { background: #f0f4fa; }
+    .file-btn input[type=file] { display: none; }
+
+    .step-status {
+      font-size: .78rem;
+      color: #888;
+      min-height: 18px;
+      line-height: 1.3;
+    }
+    .step-status.ok  { color: #1e7e34; font-weight: 500; }
+    .step-status.err { color: #dc3545; }
+    .step-status.loading { color: #1a3a6b; }
+
+    /* Progress */
+    .progress-wrap { margin-top: 14px; }
+    .progress-bar {
+      height: 6px;
+      background: #dde1ea;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #1a3a6b;
+      border-radius: 3px;
+      transition: width .2s;
+      width: 0%;
+    }
+    .progress-text { font-size: .75rem; color: #666; margin-top: 4px; }
+
+    /* ── Toolbar ──────────────────────────────────────────── */
     .toolbar {
       background: #fff;
       border-bottom: 1px solid #dde1ea;
-      padding: 10px 32px;
+      padding: 9px 32px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -42,18 +172,27 @@
       border: 1px solid #c5cad8;
       border-radius: 6px;
       padding: 5px 10px;
-      font-size: .85rem;
+      font-size: .83rem;
       background: #fff;
       cursor: pointer;
     }
+    .fonte-chip {
+      font-size: .72rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      background: #e8edf5;
+      color: #1a3a6b;
+    }
+    .fonte-chip.analise { background: #d4edda; color: #155724; }
     #btn-refresh {
       margin-left: auto;
       background: #1a3a6b;
       color: #fff;
       border: none;
       border-radius: 6px;
-      padding: 6px 16px;
-      font-size: .83rem;
+      padding: 6px 14px;
+      font-size: .82rem;
       cursor: pointer;
       transition: background .15s;
     }
@@ -63,32 +202,32 @@
     .cards {
       display: flex;
       gap: 16px;
-      padding: 24px 32px 8px;
+      padding: 20px 32px 8px;
       flex-wrap: wrap;
     }
     .card {
       flex: 1;
-      min-width: 170px;
+      min-width: 160px;
       background: #fff;
       border-radius: 10px;
-      padding: 18px 20px;
+      padding: 16px 18px;
       box-shadow: 0 1px 4px rgba(0,0,0,.08);
       border-left: 5px solid #ccc;
     }
-    .card.verde  { border-left-color: #28a745; }
-    .card.amarelo{ border-left-color: #ffc107; }
-    .card.laranja{ border-left-color: #fd7e14; }
+    .card.verde   { border-left-color: #28a745; }
+    .card.amarelo { border-left-color: #ffc107; }
+    .card.laranja { border-left-color: #fd7e14; }
     .card.vermelho{ border-left-color: #dc3545; }
-    .card .num { font-size: 2.2rem; font-weight: 700; line-height: 1; }
-    .card.verde  .num { color: #28a745; }
+    .card .num { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .card.verde   .num { color: #28a745; }
     .card.amarelo .num { color: #e6a800; }
     .card.laranja .num { color: #fd7e14; }
     .card.vermelho .num { color: #dc3545; }
-    .card .label { font-size: .78rem; color: #666; margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }
-    .card .desc  { font-size: .72rem; color: #999; margin-top: 3px; }
+    .card .label { font-size: .76rem; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: .5px; }
+    .card .desc  { font-size: .7rem;  color: #999; margin-top: 2px; }
 
     /* ── Tabs ────────────────────────────────────────────── */
-    .tabs-wrap { padding: 16px 32px 0; }
+    .tabs-wrap { padding: 14px 32px 0; }
     .tab-nav {
       display: flex;
       gap: 4px;
@@ -97,8 +236,8 @@
     .tab-btn {
       background: none;
       border: none;
-      padding: 9px 20px;
-      font-size: .88rem;
+      padding: 8px 18px;
+      font-size: .86rem;
       font-weight: 500;
       cursor: pointer;
       color: #666;
@@ -118,7 +257,7 @@
       background: #e8edf5;
       color: #1a3a6b;
       border-radius: 10px;
-      font-size: .7rem;
+      font-size: .68rem;
       padding: 1px 7px;
       margin-left: 5px;
       font-weight: 600;
@@ -138,11 +277,11 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: .82rem;
+      font-size: .81rem;
     }
     thead tr { background: #f5f7fb; }
     th {
-      padding: 10px 12px;
+      padding: 9px 11px;
       text-align: left;
       font-weight: 600;
       color: #444;
@@ -150,14 +289,12 @@
       white-space: nowrap;
     }
     td {
-      padding: 9px 12px;
+      padding: 8px 11px;
       border-bottom: 1px solid #eef0f4;
       vertical-align: top;
     }
     tbody tr:hover { background: #f8f9fc; }
     tbody tr:last-child td { border-bottom: none; }
-
-    /* Alertas */
     tbody tr.alerta td { background: #fff5f5; }
     tbody tr.alerta:hover td { background: #ffeaea; }
     .badge-alerta {
@@ -165,78 +302,143 @@
       color: #fff;
       border-radius: 4px;
       padding: 2px 6px;
-      font-size: .68rem;
+      font-size: .67rem;
       font-weight: 700;
-      letter-spacing: .3px;
     }
-
-    /* Score */
     .score-pill {
       display: inline-block;
       border-radius: 10px;
       padding: 2px 8px;
-      font-size: .75rem;
+      font-size: .73rem;
       font-weight: 600;
     }
     .score-alto   { background: #d4edda; color: #155724; }
     .score-medio  { background: #fff3cd; color: #856404; }
     .score-baixo  { background: #f8d7da; color: #721c24; }
-
-    /* Status badges */
-    .chip {
-      display: inline-block;
-      border-radius: 10px;
-      padding: 2px 8px;
-      font-size: .72rem;
-      font-weight: 600;
-    }
+    .chip { display: inline-block; border-radius: 10px; padding: 2px 8px; font-size: .7rem; font-weight: 600; }
     .chip-s { background: #d4edda; color: #155724; }
     .chip-n { background: #f8d7da; color: #721c24; }
     .chip-p { background: #fff3cd; color: #856404; }
 
-    /* Loading / empty */
     .state-msg {
-      padding: 48px;
+      padding: 40px;
       text-align: center;
       color: #999;
-      font-size: .9rem;
+      font-size: .88rem;
     }
     .spinner {
       display: inline-block;
-      width: 22px; height: 22px;
+      width: 20px; height: 20px;
       border: 3px solid #dde1ea;
       border-top-color: #1a3a6b;
       border-radius: 50%;
       animation: spin .7s linear infinite;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .obj-cell { max-width: 320px; }
+    .obj-cell { max-width: 300px; }
     .obj-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   </style>
 </head>
 <body>
 
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
 <header>
   <div>
     <h1>Monitor PNCP × APLIC</h1>
-    <div class="sub">Sinop — Mato Grosso · 2026</div>
+    <div class="sub" id="header-sub">Sinop — Mato Grosso · 2026</div>
   </div>
-  <div id="ultima-atualizacao">Carregando…</div>
+  <div class="header-right">
+    <div id="ultima-atualizacao">Carregando…</div>
+  </div>
 </header>
 
+<!-- ── Painel de Análise (collapsível) ────────────────────────────────── -->
+<div class="painel">
+  <div class="painel-header" onclick="togglePainel()">
+    <span>⚙ Importar e Analisar Dados <span class="tag">Novo</span></span>
+    <span id="painel-icon" style="font-size:.8rem;color:#888">▼ abrir</span>
+  </div>
+  <div id="painel-body">
+    <div class="steps">
+
+      <!-- Step 1: Buscar PNCP -->
+      <div class="step" id="step-1">
+        <div class="step-header">
+          <div class="step-num">1</div>
+          <div class="step-title">Buscar PNCP</div>
+        </div>
+        <div class="step-body">
+          <div class="date-row">
+            <label>De&nbsp;<input type="date" id="data-ini" /></label>
+            <label>Até&nbsp;<input type="date" id="data-fim" /></label>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-fetch" onclick="startFetchPNCP()">Buscar</button>
+          </div>
+          <div class="step-status" id="pncp-status">Defina o período e clique em Buscar.</div>
+          <div class="progress-wrap" id="pncp-progress" style="display:none">
+            <div class="progress-bar"><div class="progress-fill" id="pncp-fill"></div></div>
+            <div class="progress-text" id="pncp-prog-text"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Importar APLIC -->
+      <div class="step" id="step-2">
+        <div class="step-header">
+          <div class="step-num">2</div>
+          <div class="step-title">Importar APLIC</div>
+        </div>
+        <div class="step-body">
+          <p style="font-size:.78rem;color:#666;line-height:1.4">
+            Exporte o extrato de licitações do APLIC/TCE-MT em formato CSV e selecione abaixo.
+          </p>
+          <label class="file-btn">
+            <input type="file" id="file-aplic" accept=".csv,.CSV" onchange="onFileAplic(this)" />
+            📂 Selecionar CSV do APLIC
+          </label>
+          <div class="step-status" id="aplic-status">Aguardando arquivo.</div>
+        </div>
+      </div>
+
+      <!-- Step 3: Cruzar e Salvar -->
+      <div class="step" id="step-3">
+        <div class="step-header">
+          <div class="step-num">3</div>
+          <div class="step-title">Cruzar e Salvar</div>
+        </div>
+        <div class="step-body">
+          <p style="font-size:.78rem;color:#666;line-height:1.4">
+            Execute o cruzamento nos dados carregados e, opcionalmente, salve no Firebase para acesso remoto.
+          </p>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-cross" onclick="runCrossMatch()" disabled>Cruzar</button>
+            <button class="btn btn-success" id="btn-save" onclick="saveToFirebase()" disabled>Salvar no Firebase</button>
+          </div>
+          <div class="step-status" id="cross-status">Complete os passos 1 e 2 primeiro.</div>
+        </div>
+      </div>
+
+    </div><!-- /.steps -->
+  </div><!-- /#painel-body -->
+</div><!-- /.painel -->
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
 <div class="toolbar">
-  <label for="filtro-orgao">Órgão:</label>
-  <select id="filtro-orgao">
-    <option value="">Todos</option>
-    <option value="Prefeitura Municipal de Sinop">Prefeitura</option>
-    <option value="Câmara Municipal de Sinop">Câmara</option>
-    <option value="INSTITUTO DE PREVIDENCIA DE SINOP">IPREV</option>
+  <label for="filtro-municipio">Município:</label>
+  <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
+    <option value="sinop">Sinop</option>
   </select>
+  <label for="filtro-orgao">Órgão:</label>
+  <select id="filtro-orgao" onchange="onFiltroChange(this.value)">
+    <option value="">Todos</option>
+  </select>
+  <span class="fonte-chip" id="fonte-chip">📡 Firebase</span>
   <button id="btn-refresh" onclick="init()">↻ Atualizar</button>
 </div>
 
+<!-- ── Cards ───────────────────────────────────────────────────────────── -->
 <div class="cards">
   <div class="card verde">
     <div class="num" id="cnt-ambos">—</div>
@@ -255,11 +457,12 @@
   </div>
   <div class="card vermelho">
     <div class="num" id="cnt-alertas">—</div>
-    <div class="label">Alertas Ativos</div>
+    <div class="label">Alertas</div>
     <div class="desc">Prazo APLIC vencido</div>
   </div>
 </div>
 
+<!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
 <div class="tabs-wrap">
   <nav class="tab-nav">
     <button class="tab-btn active" onclick="switchTab('ambos', this)">
@@ -272,7 +475,6 @@
       Apenas APLIC <span class="badge" id="badge-aplic">—</span>
     </button>
   </nav>
-
   <div class="tab-content">
     <div class="table-wrap">
       <div id="table-container">
@@ -282,234 +484,975 @@
   </div>
 </div>
 
-<!-- ── Legenda (componente reutilizável via legenda.js) ───────────────── -->
+<!-- ── Legenda ─────────────────────────────────────────────────────────── -->
 <div style="max-width:1100px;margin:0 32px 40px">
   <div id="legenda-monitor"></div>
 </div>
 <script src="legenda.js"></script>
 
-<!-- Firebase SDK (CDN compat) -->
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
+<!-- PapaParse (CSV) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
 <script>
-// ── Config ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURAÇÃO
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PNCP_API = 'https://pncp.gov.br/api/consulta/v1';
+
+const MODALIDADES = {
+  1:'Leilão - Eletrônico', 2:'Diálogo Competitivo', 3:'Concurso',
+  4:'Concorrência - Eletrônica', 5:'Concorrência - Presencial',
+  6:'Pregão - Eletrônico', 7:'Pregão - Presencial',
+  8:'Dispensa de Licitação', 9:'Inexigibilidade',
+  10:'Manifestação de Interesse', 11:'Pré-qualificação',
+  12:'Credenciamento', 13:'Leilão - Presencial'
+};
+
+// Modalidade APLIC (2 dígitos) → id PNCP
+const MODAL_APLIC_PNCP = {
+  '08':8,'09':9,'13':6,'15':12,'56':5,'01':4,'02':2,'03':3,
+  '04':1,'05':7,'06':10,'07':11,'14':13
+};
+
+const MUNICIPIOS = {
+  sinop: {
+    nome: 'Sinop', uf: 'MT',
+    orgaos: [
+      { cnpj:'15024003000132', nome:'Prefeitura Municipal de Sinop',    ugs:['1112309'] },
+      { cnpj:'00814574000101', nome:'Câmara Municipal de Sinop',        ugs:['1118736'] },
+      { cnpj:'00571071000144', nome:'Instituto de Previdência de Sinop', ugs:['1113257'] },
+    ]
+  },
+  cuiaba: {
+    nome: 'Cuiabá', uf: 'MT',
+    orgaos: [
+      { cnpj:'03533064000146', nome:'Prefeitura Municipal de Cuiabá', ugs:['1113125'] },
+    ]
+  },
+  lucas_do_rio_verde: {
+    nome: 'Lucas do Rio Verde', uf: 'MT',
+    orgaos: [
+      { cnpj:'24772246000140', nome:'Prefeitura Municipal de Lucas do Rio Verde', ugs:['1111319'] },
+    ]
+  }
+};
+
 const firebaseConfig = {
   apiKey: "AIzaSyCebpTydztL6cKSjDKFOP8LVWI6CCYH9g0",
   authDomain: "pncp-monitor-b3c5f.firebaseapp.com",
   projectId: "pncp-monitor-b3c5f",
   storageBucket: "pncp-monitor-b3c5f.firebasestorage.app",
   messagingSenderId: "995357658004",
-  appId: "1:995357658004:web:6e1d404318dc251dbf9d81"
+  appId: "1:995307658004:web:6e1d404318dc251dbf9d81"
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════════════════════
+
+let currentMunKey = 'sinop';
+let pncpBuffer   = [];   // registros da API PNCP
+let aplicsBuffer = [];   // registros do CSV APLIC
+let crossResult  = null; // { ambos:[], apenas_pncp:[], apenas_aplic:[] }
+
+// Fonte da visualização atual: 'firebase' ou 'analise'
+let viewSource = 'firebase';
+let monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+
+let abaAtiva    = 'ambos';
+let orgaoFiltro = '';
+let painelAberto = false;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIREBASE
+// ═══════════════════════════════════════════════════════════════════════════
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const MUNICIPIO = "sinop";
 
-// ── Estado ─────────────────────────────────────────────────────────────────
-let abaAtiva = "ambos";
-let orgaoFiltro = "";
-let cache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
-
-// ── Utilitários ────────────────────────────────────────────────────────────
-function fmt(val) {
-  if (val == null || val === "") return "—";
-  if (val && val.toDate) val = val.toDate();
-  if (val instanceof Date) return val.toLocaleDateString("pt-BR");
-  if (typeof val === "number") return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  return String(val);
+function sub(name) {
+  return db.collection('municipios').doc(currentMunKey).collection(name);
 }
 
-function fmtValor(val) {
-  if (val == null || val === "" || val === "nan") return "—";
-  const n = parseFloat(val);
-  if (isNaN(n)) return "—";
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+// ═══════════════════════════════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════════════════════════════
+
+function cleanCnpj(s) { return (s||'').replace(/\D/g,''); }
+
+function normalizeText(txt) {
+  if (!txt) return '';
+  txt = txt.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  txt = txt.toLowerCase();
+  const stopwords = [
+    'registro de precos para','registro de precos','aquisicao de','contratacao de',
+    'prestacao de servicos','fornecimento de','futura e eventual','eventual e futura',
+    'credenciamento de','empresa especializada','contratacao artistica',
+    'prestacao de servico'
+  ];
+  stopwords.forEach(sw => { txt = txt.split(sw).join(' '); });
+  return txt.replace(/\s+/g,' ').trim();
 }
 
-function fmtData(ts) {
-  if (!ts) return "—";
+function tokenSetScore(s1, s2) {
+  if (!s1 || !s2) return 0;
+  const toks1 = new Set(s1.split(/\s+/).filter(t => t.length > 2));
+  const toks2 = new Set(s2.split(/\s+/).filter(t => t.length > 2));
+  if (!toks1.size || !toks2.size) return 0;
+  let inter = 0;
+  toks1.forEach(t => { if (toks2.has(t)) inter++; });
+  const union = toks1.size + toks2.size - inter;
+  return Math.round(inter / union * 100);
+}
+
+function parseValue(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/R\$\s*/g,'').trim();
+  // Formato BR: 1.234,56
+  if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(s))
+    return parseFloat(s.replace(/\./g,'').replace(',','.'));
+  const n = parseFloat(s.replace(/[^\d.]/g,''));
+  return isNaN(n) ? null : n;
+}
+
+function parseDate(v) {
+  if (!v) return null;
   try {
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString("pt-BR");
-  } catch { return "—"; }
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  } catch { return null; }
+}
+
+function addWorkdays(date, n) {
+  const d = new Date(date);
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+  }
+  return d;
+}
+
+function fmtDate(ts) {
+  if (!ts) return '—';
+  try {
+    const d = ts.toDate ? ts.toDate() : (ts instanceof Date ? ts : new Date(ts));
+    return d.toLocaleDateString('pt-BR');
+  } catch { return '—'; }
+}
+
+function fmtValor(v) {
+  if (v == null || v === '' || v === 'nan' || v === undefined) return '—';
+  const n = parseFloat(v);
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 }
 
 function scoreClass(s) {
   const n = parseFloat(s);
-  if (isNaN(n)) return "";
-  if (n >= 85) return "score-alto";
-  if (n >= 70) return "score-medio";
-  return "score-baixo";
+  if (isNaN(n)) return '';
+  return n >= 85 ? 'score-alto' : n >= 70 ? 'score-medio' : 'score-baixo';
 }
 
-function orgaoMatch(doc) {
-  if (!orgaoFiltro) return true;
-  const orgao = (doc.orgao || "").toLowerCase();
-  return orgao.includes(orgaoFiltro.toLowerCase());
+function toYMD(date) {
+  return date.toISOString().slice(0,10).replace(/-/g,'');
 }
 
-// ── Carrega dados do Firestore ──────────────────────────────────────────────
-async function carregarSub(sub) {
-  if (cache[sub]) return cache[sub];
-  const snap = await db
-    .collection("municipios").doc(MUNICIPIO)
-    .collection(sub)
-    .orderBy("atualizadoEm", "desc")
-    .get();
-  cache[sub] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  return cache[sub];
+// Extrai cnpj do registro PNCP (API retorna obj aninhado)
+function pncpCnpj(r) {
+  return cleanCnpj(r.orgaoEntidade?.cnpj || r.orgaoEntidade_cnpj || '');
 }
 
-async function updateCards() {
-  const [ambos, pncp, aplic] = await Promise.all([
-    carregarSub("ambos"),
-    carregarSub("apenas_pncp"),
-    carregarSub("apenas_aplic"),
-  ]);
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 1 — BUSCA PNCP
+// ═══════════════════════════════════════════════════════════════════════════
 
-  document.getElementById("cnt-ambos").textContent  = ambos.length;
-  document.getElementById("cnt-pncp").textContent   = pncp.length;
-  document.getElementById("cnt-aplic").textContent  = aplic.length;
-  document.getElementById("badge-ambos").textContent = ambos.length;
-  document.getElementById("badge-pncp").textContent  = pncp.length;
-  document.getElementById("badge-aplic").textContent = aplic.length;
+function setPncpStatus(msg, cls='') {
+  const el = document.getElementById('pncp-status');
+  el.textContent = msg;
+  el.className = 'step-status' + (cls ? ' '+cls : '');
+}
 
-  const alertas = pncp.filter(d => d.alertaAtivo).length;
-  document.getElementById("cnt-alertas").textContent = alertas;
+function setPncpProgress(pct, text) {
+  document.getElementById('pncp-progress').style.display = 'block';
+  document.getElementById('pncp-fill').style.width = pct + '%';
+  document.getElementById('pncp-prog-text').textContent = text;
+}
 
-  // Última atualização
-  const todas = [...ambos, ...pncp, ...aplic];
-  let ultima = null;
-  todas.forEach(d => {
-    if (!d.atualizadoEm) return;
-    const t = d.atualizadoEm.toDate ? d.atualizadoEm.toDate() : new Date(d.atualizadoEm);
-    if (!ultima || t > ultima) ultima = t;
+async function startFetchPNCP() {
+  const iniRaw = document.getElementById('data-ini').value;
+  const fimRaw = document.getElementById('data-fim').value;
+  if (!iniRaw || !fimRaw) { setPncpStatus('Defina as duas datas.','err'); return; }
+
+  const ini = toYMD(new Date(iniRaw));
+  const fim = toYMD(new Date(fimRaw));
+
+  const mun = MUNICIPIOS[currentMunKey];
+  const cnpjSet = new Set(mun.orgaos.map(o => o.cnpj));
+
+  document.getElementById('btn-fetch').disabled = true;
+  document.getElementById('step-1').className = 'step active';
+  pncpBuffer = [];
+
+  const mods = Object.keys(MODALIDADES).map(Number);
+  let total = 0;
+
+  for (let i = 0; i < mods.length; i++) {
+    const mod = mods[i];
+    setPncpStatus(`Buscando modalidade ${i+1}/${mods.length}: ${MODALIDADES[mod]}…`, 'loading');
+    setPncpProgress(Math.round(i / mods.length * 100), `Modalidade ${i+1} de ${mods.length}`);
+
+    try {
+      const first = await fetchPage(ini, fim, mod, 1, mun.uf);
+      if (!first || !first.data) continue;
+
+      const items = first.data.filter(r => cnpjSet.has(pncpCnpj(r)));
+      pncpBuffer.push(...items);
+      total += items.length;
+
+      const pages = first.totalPaginas || 1;
+      for (let p = 2; p <= pages; p++) {
+        const page = await fetchPage(ini, fim, mod, p, mun.uf);
+        if (page && page.data) {
+          const more = page.data.filter(r => cnpjSet.has(pncpCnpj(r)));
+          pncpBuffer.push(...more);
+          total += more.length;
+        }
+      }
+    } catch (e) {
+      console.warn(`Modalidade ${mod} erro:`, e.message);
+      if (e.message.includes('Failed to fetch') || e.message.includes('CORS')) {
+        setPncpStatus('Erro de CORS: o navegador bloqueou a API PNCP. Rode em localhost ou use o pipeline Python.','err');
+        document.getElementById('btn-fetch').disabled = false;
+        document.getElementById('pncp-progress').style.display = 'none';
+        return;
+      }
+    }
+  }
+
+  setPncpProgress(100, 'Concluído');
+  document.getElementById('btn-fetch').disabled = false;
+
+  if (total === 0) {
+    setPncpStatus(`Nenhum registro encontrado para ${mun.nome} no período.`,'err');
+    document.getElementById('step-1').className = 'step';
+  } else {
+    setPncpStatus(`✓ ${total} registros carregados para ${mun.nome}.`,'ok');
+    document.getElementById('step-1').className = 'step done';
+    checkCrossReady();
+  }
+}
+
+async function fetchPage(ini, fim, mod, pagina, uf) {
+  const url = `${PNCP_API}/contratacoes/publicacao?dataInicial=${ini}&dataFinal=${fim}` +
+    `&codigoModalidadeContratacao=${mod}&uf=${uf}&pagina=${pagina}&tamanhoPagina=50`;
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 2 — PARSE APLIC CSV
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setAplicStatus(msg, cls='') {
+  const el = document.getElementById('aplic-status');
+  el.textContent = msg;
+  el.className = 'step-status' + (cls ? ' '+cls : '');
+}
+
+// Constrói mapa ug → cnpj para o município atual
+function buildUgCnpjMap() {
+  const map = {};
+  MUNICIPIOS[currentMunKey].orgaos.forEach(o => {
+    o.ugs.forEach(ug => { map[ug.trim()] = o.cnpj; });
   });
-  document.getElementById("ultima-atualizacao").textContent =
-    ultima ? "Atualizado em " + ultima.toLocaleString("pt-BR") : "";
+  return map;
 }
 
-// ── Renderiza tabelas ───────────────────────────────────────────────────────
-function renderAmbos(docs) {
-  const filtrados = docs.filter(orgaoMatch);
-  if (!filtrados.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+function onFileAplic(input) {
+  const file = input.files[0];
+  if (!file) return;
 
-  const rows = filtrados.map(d => `
-    <tr>
-      <td>${d.orgao || "—"}</td>
-      <td>${d.modalidade || "—"}</td>
-      <td>${d.numero || "—"}/${d.ano || "—"}</td>
-      <td class="obj-cell">
-        <div class="obj-text" title="PNCP: ${(d.objeto||"").replace(/"/g,"'")}"><strong>PNCP:</strong> ${d.objeto || "—"}</div>
-        ${d.objeto_aplic ? `<div class="obj-text" style="color:#555;margin-top:3px" title="APLIC: ${(d.objeto_aplic||"").replace(/"/g,"'")}"><strong>APLIC:</strong> ${d.objeto_aplic}</div>` : ""}
-      </td>
-      <td style="white-space:nowrap">
-        <div>${fmtValor(d.valor)}</div>
-        ${d.valor_aplic ? `<div style="color:#555;font-size:.75rem">${fmtValor(d.valor_aplic)}</div>` : ""}
-      </td>
-      <td><span class="score-pill ${scoreClass(d.score_cruzamento)}">${d.score_cruzamento ? parseFloat(d.score_cruzamento).toFixed(0) : "—"}</span></td>
-      <td style="white-space:nowrap">${fmtData(d.dataPNCP)}</td>
-      <td style="white-space:nowrap">${fmtData(d.dataAPLIC)}</td>
-      <td style="font-size:.75rem;color:#666">${d.estrategia_match || "—"}</td>
-    </tr>`).join("");
+  document.getElementById('step-2').className = 'step active';
+  setAplicStatus('Lendo arquivo…','loading');
 
-  return `<table>
-    <thead><tr>
-      <th>Órgão PNCP</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto (PNCP / APLIC)</th>
-      <th>Valor (PNCP / APLIC)</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    encoding: 'UTF-8',
+    complete(results) {
+      const rows = results.data;
+      if (!rows.length) {
+        setAplicStatus('Arquivo vazio ou inválido.','err');
+        document.getElementById('step-2').className = 'step';
+        return;
+      }
+      aplicsBuffer = processAplic(rows);
+      if (!aplicsBuffer.length) {
+        setAplicStatus('Nenhum registro do município encontrado no CSV.','err');
+        document.getElementById('step-2').className = 'step';
+        return;
+      }
+      setAplicStatus(`✓ ${aplicsBuffer.length} registros carregados do APLIC.`,'ok');
+      document.getElementById('step-2').className = 'step done';
+      checkCrossReady();
+    },
+    error(err) {
+      setAplicStatus('Erro ao ler o arquivo: ' + err.message,'err');
+      document.getElementById('step-2').className = 'step';
+    }
+  });
 }
 
-function renderApenasPncp(docs) {
-  const filtrados = docs.filter(orgaoMatch);
-  if (!filtrados.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+function processAplic(rows) {
+  const mun = MUNICIPIOS[currentMunKey];
+  const munNome = mun.nome.toLowerCase();
+  const ugMap = buildUgCnpjMap();
 
-  const rows = filtrados.map(d => `
-    <tr class="${d.alertaAtivo ? 'alerta' : ''}">
-      <td>${d.orgao || "—"}</td>
-      <td>${d.modalidade || "—"}</td>
-      <td>${d.numero || "—"}/${d.ano || "—"}</td>
-      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
-        ${d.objeto || "—"}</div></td>
-      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
-      <td style="white-space:nowrap">${fmtData(d.dataPNCP)}</td>
-      <td style="white-space:nowrap">${fmtData(d.prazoAplic)}</td>
-      <td>${d.alertaAtivo ? '<span class="badge-alerta">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
-    </tr>`).join("");
+  // Descobre colunas dinamicamente (o APLIC não tem header fixo)
+  const header = Object.keys(rows[0] || {});
+  const col = (keywords) => header.find(h => keywords.some(k => h.toLowerCase().includes(k))) || null;
 
-  return `<table>
-    <thead><tr>
-      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
-      <th>Valor</th><th>Data PNCP</th><th>Prazo APLIC</th><th>Status APLIC</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+  const colUg      = col(['cód. ug','cod. ug','ug','cod_ug','ugcod']);
+  const colMun     = col(['município','municipio']);
+  const colNum     = col(['nº licitaç','licitac','licitaç','nº licit','numero']);
+  const colExerc   = col(['exercício','exercicio','ano']);
+  const colMod     = col(['cod. modal','modalidade']);
+  const colObj     = col(['objetivo','objeto']);
+  const colMotivo  = col(['motivo']);
+  const colData    = col(['data abertura','abertura']);
+  const colValEst  = col(['valor estimado','val. est','estimado']);
+
+  // Forward-fill do Cód. UG (o APLIC agrupa UGs)
+  let lastUg = '';
+  const processed = [];
+
+  rows.forEach(row => {
+    const ugRaw = (colUg ? row[colUg] : '') || '';
+    const ug = ugRaw.trim() || lastUg;
+    if (ug) lastUg = ug;
+
+    const munRow = (colMun ? row[colMun] : '').toLowerCase();
+    const cnpj = ugMap[ug] || null;
+
+    // Filtra: inclui apenas registros do município selecionado
+    const isMun = munRow.includes(munNome.split(' ')[0].toLowerCase()) ||
+                  (cnpj && mun.orgaos.some(o => o.cnpj === cnpj));
+    if (!isMun) return;
+
+    const numRaw  = colNum    ? row[colNum]    : '';
+    const exerc   = colExerc  ? row[colExerc]  : '';
+    const modCod  = colMod    ? row[colMod]    : '';
+    const obj     = colObj    ? row[colObj]    : '';
+    const motivo  = colMotivo ? row[colMotivo] : '';
+    const dataRaw = colData   ? row[colData]   : '';
+    const valRaw  = colValEst ? row[colValEst] : '';
+
+    // Número puro
+    const numMatch = (numRaw||'').match(/(\d+)/);
+    const numero = numMatch ? numMatch[1] : numRaw;
+
+    // Ano do exercício
+    const anoMatch = (numRaw||'').match(/\d+\s*[/\-]\s*(20\d{2}|\d{2})/) ||
+                     (exerc||'').match(/(20\d{2})/);
+    let ano = anoMatch ? anoMatch[1] : (exerc||'');
+    if (ano && ano.length === 2) ano = '20' + ano;
+
+    processed.push({
+      _cnpj:        cnpj || '',
+      _ug:          ug,
+      _numero:      numero,
+      _ano:         ano,
+      _mod_id:      MODAL_APLIC_PNCP[String(modCod).padStart(2,'0')] || null,
+      _obj_norm:    normalizeText(obj || motivo),
+      _obj_raw:     obj || motivo,
+      _data:        parseDate(dataRaw),
+      _valor:       parseValue(valRaw),
+      _orgao_nome:  mun.orgaos.find(o => o.cnpj === cnpj)?.nome || ug,
+      _raw:         row  // mantém original para exibição
+    });
+  });
+
+  return processed;
 }
 
-function renderApenasAplic(docs) {
-  const filtrados = docs.filter(orgaoMatch);
-  if (!filtrados.length) return '<div class="state-msg">Nenhum registro nesta categoria.</div>';
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 3 — CROSS-MATCH
+// ═══════════════════════════════════════════════════════════════════════════
 
-  const rows = filtrados.map(d => `
-    <tr>
-      <td>${d.orgao || "—"}</td>
-      <td>${d.modalidade || "—"}</td>
-      <td>${d.numero || "—"}/${d.ano || "—"}</td>
-      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||"").replace(/"/g,"'")}">
-        ${d.objeto || "—"}</div></td>
-      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
-      <td style="white-space:nowrap">${fmtData(d.dataAPLIC)}</td>
-      <td><span class="chip chip-n">Sem PNCP</span></td>
-    </tr>`).join("");
-
-  return `<table>
-    <thead><tr>
-      <th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
-      <th>Valor</th><th>Data APLIC</th><th>Status</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+function checkCrossReady() {
+  const ready = pncpBuffer.length > 0 && aplicsBuffer.length > 0;
+  document.getElementById('btn-cross').disabled = !ready;
+  if (ready) {
+    document.getElementById('cross-status').textContent =
+      `Pronto: ${pncpBuffer.length} PNCP × ${aplicsBuffer.length} APLIC.`;
+    document.getElementById('step-3').className = 'step active';
+  }
 }
 
-// ── Troca de aba ───────────────────────────────────────────────────────────
-async function switchTab(sub, btn) {
-  abaAtiva = sub;
-  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  await renderTab();
+function setCrossStatus(msg, cls='') {
+  const el = document.getElementById('cross-status');
+  el.textContent = msg;
+  el.className = 'step-status' + (cls ? ' '+cls : '');
 }
 
-async function renderTab() {
-  const container = document.getElementById("table-container");
-  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+function computeScore(p, a) {
+  // Texto: 50%
+  const textScore = tokenSetScore(p._obj_norm, a._obj_norm);
+
+  // Valor: 30%
+  let valScore = 50;
+  const vp = p._valor, va = a._valor;
+  if (vp && va && vp > 0 && va > 0) {
+    const delta = Math.abs(vp - va) / Math.max(vp, va) * 100;
+    valScore = delta <= 10 ? 100 : delta <= 30 ? 50 : 0;
+  }
+
+  // Data: 20%
+  let dateScore = 50;
+  if (p._data && a._data) {
+    const deltaDays = Math.abs((p._data - a._data) / 86400000);
+    dateScore = deltaDays <= 15 ? 100 : deltaDays <= 30 ? 50 : 0;
+  }
+
+  return Math.round(textScore * 0.5 + valScore * 0.3 + dateScore * 0.2);
+}
+
+function runCrossMatch() {
+  if (!pncpBuffer.length || !aplicsBuffer.length) return;
+
+  document.getElementById('btn-cross').disabled = true;
+  setCrossStatus('Cruzando…','loading');
+
+  const mun = MUNICIPIOS[currentMunKey];
+
+  // Prepara PNCP: agrega campos acessíveis
+  const pncp = pncpBuffer.map(r => ({
+    _cnpj:      pncpCnpj(r),
+    _numero:    String(r.numeroCompra || '').match(/(\d+)/)?.[1] || '',
+    _ano:       String(r.anoCompra || ''),
+    _obj_norm:  normalizeText(r.objetoCompra || ''),
+    _data:      parseDate(r.dataPublicacaoPncp || r.dataAberturaProposta),
+    _valor:     parseFloat(r.valorTotalEstimado) || null,
+    _raw:       r
+  }));
+
+  // Agrupa APLIC por CNPJ
+  const aplicssByCnpj = {};
+  aplicsBuffer.forEach((a, i) => {
+    const key = a._cnpj || '__sem_cnpj';
+    if (!aplicssByCnpj[key]) aplicssByCnpj[key] = [];
+    aplicssByCnpj[key].push({...a, _idx: i});
+  });
+
+  const matched         = [];
+  const matchedPncpIdx  = new Set();
+  const matchedAplicIdx = new Set();
+
+  // Para cada PNCP, encontra melhor APLIC (mesmo CNPJ)
+  pncp.forEach((p, pi) => {
+    const candidates = aplicssByCnpj[p._cnpj] || [];
+    let best = null, bestScore = 0;
+
+    candidates.forEach(a => {
+      if (matchedAplicIdx.has(a._idx)) return;
+      const score = computeScore(p, a);
+      if (score > bestScore && score >= 60) { bestScore = score; best = a; }
+    });
+
+    if (best) {
+      matchedAplicIdx.add(best._idx);
+      matchedPncpIdx.add(pi);
+      matched.push({ pncp: p, aplic: best, score: bestScore,
+        status: bestScore >= 85 ? 'MATCH_CONFIRMADO' : 'MATCH_PARCIAL' });
+    }
+  });
+
+  // Apenas PNCP
+  const apenas_pncp = pncp.filter((_, i) => !matchedPncpIdx.has(i));
+  // Apenas APLIC
+  const apenas_aplic = aplicsBuffer.filter((_, i) => !matchedAplicIdx.has(i));
+
+  crossResult = { matched, apenas_pncp, apenas_aplic };
+
+  const summary = `✓ ${matched.length} cruzados | ${apenas_pncp.length} só PNCP | ${apenas_aplic.length} só APLIC`;
+  setCrossStatus(summary, 'ok');
+  document.getElementById('step-3').className = 'step done';
+  document.getElementById('btn-save').disabled = false;
+
+  // Exibe resultados no monitor
+  viewSource = 'analise';
+  document.getElementById('fonte-chip').textContent = '🔬 Análise';
+  document.getElementById('fonte-chip').className = 'fonte-chip analise';
+  monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+  renderFromCross();
+}
+
+// Converte crossResult para o formato que as funções de render esperam
+function renderFromCross() {
+  const mun = MUNICIPIOS[currentMunKey];
+
+  const ambos = crossResult.matched.map(m => {
+    const r = m.pncp._raw;
+    const a = m.aplic;
+    const dataPNCP = m.pncp._data;
+    return {
+      orgao:         r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '',
+      modalidade:    r.modalidadeNome || MODALIDADES[r.modalidadeId] || '',
+      numero:        r.numeroCompra || '',
+      ano:           String(r.anoCompra || ''),
+      objeto:        r.objetoCompra || '',
+      valor:         m.pncp._valor,
+      cnpj:          m.pncp._cnpj,
+      dataPNCP:      dataPNCP,
+      prazoAplic:    dataPNCP ? addWorkdays(dataPNCP, 3) : null,
+      statusPNCP:    'S', statusAPLIC: 'S', alertaAtivo: false,
+      orgao_aplic:   a._orgao_nome || '',
+      numero_aplic:  a._numero || '',
+      objeto_aplic:  a._obj_raw || '',
+      valor_aplic:   a._valor,
+      dataAPLIC:     a._data,
+      score_cruzamento: m.score,
+      estrategia_match: m.status,
+      municipio:     currentMunKey
+    };
+  });
+
+  const apenas_pncp = crossResult.apenas_pncp.map(p => {
+    const r = p._raw;
+    const dataPNCP = p._data;
+    return {
+      orgao:       r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '',
+      modalidade:  r.modalidadeNome || MODALIDADES[r.modalidadeId] || '',
+      numero:      r.numeroCompra || '',
+      ano:         String(r.anoCompra || ''),
+      objeto:      r.objetoCompra || '',
+      valor:       p._valor,
+      cnpj:        p._cnpj,
+      dataPNCP:    dataPNCP,
+      prazoAplic:  dataPNCP ? addWorkdays(dataPNCP, 3) : null,
+      statusPNCP:  'S', statusAPLIC: 'pendente',
+      alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP, 3)) : false,
+      municipio:   currentMunKey
+    };
+  });
+
+  const apenas_aplic = crossResult.apenas_aplic.map(a => ({
+    orgao:      a._orgao_nome || '',
+    modalidade: MODALIDADES[a._mod_id] || '',
+    numero:     a._numero || '',
+    ano:        a._ano || '',
+    objeto:     a._obj_raw || '',
+    valor:      a._valor,
+    cnpj:       a._cnpj || '',
+    dataAPLIC:  a._data,
+    statusPNCP: 'N', statusAPLIC: 'S',
+    municipio:  currentMunKey
+  }));
+
+  updateCards({ ambos, apenas_pncp, apenas_aplic });
+  renderTab({ ambos, apenas_pncp, apenas_aplic });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SAVE TO FIREBASE
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function saveToFirebase() {
+  if (!crossResult) return;
+  document.getElementById('btn-save').disabled = true;
+  setCrossStatus('Salvando no Firebase…','loading');
 
   try {
-    const docs = await carregarSub(abaAtiva);
-    if (abaAtiva === "ambos")        container.innerHTML = renderAmbos(docs);
-    else if (abaAtiva === "apenas_pncp") container.innerHTML = renderApenasPncp(docs);
-    else                             container.innerHTML = renderApenasAplic(docs);
-  } catch (e) {
-    container.innerHTML = `<div class="state-msg">Erro ao carregar dados: ${e.message}</div>`;
+    const TS = firebase.firestore.FieldValue.serverTimestamp();
+
+    // Salva ambos
+    for (const m of crossResult.matched) {
+      const r = m.pncp._raw;
+      const a = m.aplic;
+      const dataPNCP = m.pncp._data;
+      const docId = String(r.numeroControlePNCP || `${m.pncp._cnpj}-${m.pncp._numero}-${m.pncp._ano}`)
+        .replace(/\//g,'_');
+      if (!docId) continue;
+
+      const doc = {
+        municipio:       currentMunKey,
+        orgao:           String(r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '').slice(0,80),
+        modalidade:      String(r.modalidadeNome || MODALIDADES[r.modalidadeId] || '').slice(0,60),
+        numero:          String(r.numeroCompra || ''),
+        ano:             String(r.anoCompra || ''),
+        objeto:          String(r.objetoCompra || '').slice(0,300),
+        valor:           m.pncp._valor,
+        cnpj:            m.pncp._cnpj,
+        dataPNCP:        dataPNCP,
+        prazoAplic:      dataPNCP ? addWorkdays(dataPNCP,3) : null,
+        statusPNCP:      'S', statusAPLIC: 'S', alertaAtivo: false,
+        orgao_aplic:     String(a._orgao_nome || '').slice(0,80),
+        numero_aplic:    String(a._numero || ''),
+        objeto_aplic:    String(a._obj_raw || '').slice(0,300),
+        valor_aplic:     a._valor,
+        dataAPLIC:       a._data,
+        score_cruzamento: String(m.score),
+        estrategia_match: m.status,
+        criadoEm:        TS, atualizadoEm: TS
+      };
+      await sub('ambos').doc(docId).set(doc);
+
+      // Remove de apenas_pncp se existir
+      await sub('apenas_pncp').doc(docId).delete();
+    }
+
+    // Salva apenas_pncp
+    for (const p of crossResult.apenas_pncp) {
+      const r = p._raw;
+      const dataPNCP = p._data;
+      const docId = String(r.numeroControlePNCP || '').replace(/\//g,'_');
+      if (!docId) continue;
+
+      // Não reescreve se já está em ambos
+      const inAmbos = await sub('ambos').doc(docId).get();
+      if (inAmbos.exists) continue;
+
+      const doc = {
+        municipio:   currentMunKey,
+        orgao:       String(r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '').slice(0,80),
+        modalidade:  String(r.modalidadeNome || MODALIDADES[r.modalidadeId] || '').slice(0,60),
+        numero:      String(r.numeroCompra || ''),
+        ano:         String(r.anoCompra || ''),
+        objeto:      String(r.objetoCompra || '').slice(0,300),
+        valor:       p._valor,
+        cnpj:        p._cnpj,
+        dataPNCP:    dataPNCP,
+        prazoAplic:  dataPNCP ? addWorkdays(dataPNCP,3) : null,
+        statusPNCP:  'S', statusAPLIC: 'pendente',
+        alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP,3)) : false,
+        criadoEm: TS, atualizadoEm: TS
+      };
+      await sub('apenas_pncp').doc(docId).set(doc);
+    }
+
+    // Salva apenas_aplic
+    for (const a of crossResult.apenas_aplic) {
+      const docId = `${a._cnpj||'sem'}-${a._numero||'0'}-${a._ano||'0'}`;
+      const doc = {
+        municipio:   currentMunKey,
+        orgao:       String(a._orgao_nome || '').slice(0,80),
+        modalidade:  String(MODALIDADES[a._mod_id] || '').slice(0,60),
+        numero:      String(a._numero || ''),
+        ano:         String(a._ano || ''),
+        objeto:      String(a._obj_raw || '').slice(0,300),
+        valor:       a._valor,
+        cnpj:        a._cnpj || '',
+        dataAPLIC:   a._data,
+        statusPNCP:  'N', statusAPLIC: 'S',
+        criadoEm: TS, atualizadoEm: TS
+      };
+      await sub('apenas_aplic').doc(docId).set(doc);
+    }
+
+    setCrossStatus('✓ Dados salvos no Firebase com sucesso!','ok');
+    document.getElementById('btn-save').disabled = false;
+
+    // Recarrega monitor do Firebase
+    viewSource = 'firebase';
+    document.getElementById('fonte-chip').textContent = '📡 Firebase';
+    document.getElementById('fonte-chip').className = 'fonte-chip';
+    monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+    await loadMonitor();
+
+  } catch(e) {
+    setCrossStatus('Erro ao salvar: ' + e.message,'err');
+    document.getElementById('btn-save').disabled = false;
     console.error(e);
   }
 }
 
-// ── Filtro ────────────────────────────────────────────────────────────────
-document.getElementById("filtro-orgao").addEventListener("change", e => {
-  orgaoFiltro = e.target.value;
-  renderTab();
-});
+// ═══════════════════════════════════════════════════════════════════════════
+// MONITOR — FIREBASE
+// ═══════════════════════════════════════════════════════════════════════════
 
-// ── Init ──────────────────────────────────────────────────────────────────
-async function init() {
-  cache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
-  await Promise.all([updateCards(), renderTab()]);
+async function carregarSub(name) {
+  if (monitorCache[name]) return monitorCache[name];
+  const snap = await sub(name).orderBy('atualizadoEm','desc').get();
+  monitorCache[name] = snap.docs.map(d => ({id:d.id,...d.data()}));
+  return monitorCache[name];
 }
 
+async function loadMonitor() {
+  try {
+    const [ambos, apenas_pncp, apenas_aplic] = await Promise.all([
+      carregarSub('ambos'), carregarSub('apenas_pncp'), carregarSub('apenas_aplic')
+    ]);
+
+    const data = { ambos, apenas_pncp, apenas_aplic };
+    updateOrgaoFilterFromData(data);
+    updateCards(data);
+    renderTab(data);
+
+    // Última atualização
+    const all = [...ambos, ...apenas_pncp, ...apenas_aplic];
+    let ultima = null;
+    all.forEach(d => {
+      if (!d.atualizadoEm) return;
+      const t = d.atualizadoEm.toDate?.() ?? new Date(d.atualizadoEm);
+      if (!ultima || t > ultima) ultima = t;
+    });
+    document.getElementById('ultima-atualizacao').textContent =
+      ultima ? 'Atualizado ' + ultima.toLocaleString('pt-BR') : '';
+
+  } catch(e) {
+    document.getElementById('table-container').innerHTML =
+      `<div class="state-msg">Erro ao carregar Firebase: ${e.message}</div>`;
+    console.error(e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CARDS E TABS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function updateCards(data) {
+  const { ambos, apenas_pncp, apenas_aplic } = data;
+  document.getElementById('cnt-ambos').textContent  = ambos.length;
+  document.getElementById('cnt-pncp').textContent   = apenas_pncp.length;
+  document.getElementById('cnt-aplic').textContent  = apenas_aplic.length;
+  document.getElementById('badge-ambos').textContent = ambos.length;
+  document.getElementById('badge-pncp').textContent  = apenas_pncp.length;
+  document.getElementById('badge-aplic').textContent = apenas_aplic.length;
+  const alertas = apenas_pncp.filter(d => d.alertaAtivo).length;
+  document.getElementById('cnt-alertas').textContent = alertas;
+}
+
+function renderTab(data) {
+  const container = document.getElementById('table-container');
+  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+
+  const { ambos, apenas_pncp, apenas_aplic } = data;
+  const filt = (docs) => orgaoFiltro
+    ? docs.filter(d => (d.orgao||'').toLowerCase().includes(orgaoFiltro.toLowerCase()))
+    : docs;
+
+  let html = '';
+  if (abaAtiva === 'ambos')          html = renderAmbos(filt(ambos));
+  else if (abaAtiva === 'apenas_pncp') html = renderApenasPncp(filt(apenas_pncp));
+  else                                html = renderApenasAplic(filt(apenas_aplic));
+
+  container.innerHTML = html;
+}
+
+function renderAmbos(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+  const rows = docs.map(d => `
+    <tr>
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell">
+        <div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}"><strong>PNCP:</strong> ${d.objeto||'—'}</div>
+        ${d.objeto_aplic ? `<div class="obj-text" style="color:#555;margin-top:2px" title="${(d.objeto_aplic||'').replace(/"/g,"'")}"><strong>APLIC:</strong> ${d.objeto_aplic}</div>` : ''}
+      </td>
+      <td style="white-space:nowrap">
+        <div>${fmtValor(d.valor)}</div>
+        ${d.valor_aplic!=null ? `<div style="color:#888;font-size:.73rem">${fmtValor(d.valor_aplic)}</div>` : ''}
+      </td>
+      <td><span class="score-pill ${scoreClass(d.score_cruzamento)}">${d.score_cruzamento!=null ? Math.round(parseFloat(d.score_cruzamento)) : '—'}</span></td>
+      <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataAPLIC)}</td>
+      <td style="font-size:.73rem;color:#666">${d.estrategia_match||'—'}</td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão PNCP</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto (PNCP / APLIC)</th>
+    <th>Valor</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function renderApenasPncp(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro encontrado.</div>';
+  const rows = docs.map(d => `
+    <tr class="${d.alertaAtivo?'alerta':''}">
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}">${d.objeto||'—'}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.prazoAplic)}</td>
+      <td>${d.alertaAtivo ? '<span class="badge-alerta">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+    <th>Valor</th><th>Data PNCP</th><th>Prazo APLIC</th><th>Status APLIC</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function renderApenasAplic(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro nesta categoria.</div>';
+  const rows = docs.map(d => `
+    <tr>
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}">${d.objeto||'—'}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataAPLIC)}</td>
+      <td><span class="chip chip-n">Sem PNCP</span></td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+    <th>Valor</th><th>Data APLIC</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EVENTOS DE UI
+// ═══════════════════════════════════════════════════════════════════════════
+
+function switchTab(name, btn) {
+  abaAtiva = name;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const container = document.getElementById('table-container');
+  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+
+  if (viewSource === 'analise' && crossResult) {
+    renderFromCross();
+  } else {
+    loadMonitor();
+  }
+}
+
+function onFiltroChange(val) {
+  orgaoFiltro = val;
+  if (viewSource === 'analise' && crossResult) renderFromCross();
+  else if (monitorCache.ambos) {
+    renderTab({
+      ambos: monitorCache.ambos,
+      apenas_pncp: monitorCache.apenas_pncp,
+      apenas_aplic: monitorCache.apenas_aplic
+    });
+  }
+}
+
+function changeMunicipio(key) {
+  currentMunKey = key;
+  const mun = MUNICIPIOS[key];
+  const nome = mun ? mun.nome : slugToNome(key);
+  document.getElementById('header-sub').textContent = `${nome} — MT · 2026`;
+  const selMun = document.getElementById('filtro-municipio');
+  if (selMun) selMun.value = key;
+
+  // Reset buffers e cache
+  pncpBuffer = []; aplicsBuffer = []; crossResult = null;
+  monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+  viewSource = 'firebase';
+  document.getElementById('fonte-chip').textContent = '📡 Firebase';
+  document.getElementById('fonte-chip').className = 'fonte-chip';
+
+  // Reset steps
+  ['step-1','step-2','step-3'].forEach(id => document.getElementById(id).className = 'step');
+  document.getElementById('pncp-status').textContent = 'Defina o período e clique em Buscar.';
+  document.getElementById('aplic-status').textContent = 'Aguardando arquivo.';
+  document.getElementById('cross-status').textContent = 'Complete os passos 1 e 2 primeiro.';
+  document.getElementById('btn-cross').disabled = true;
+  document.getElementById('btn-save').disabled = true;
+  document.getElementById('pncp-progress').style.display = 'none';
+
+  init();
+}
+
+function slugToNome(slug) {
+  const NOMES = {
+    sinop: 'Sinop', cuiaba: 'Cuiabá', varzea_grande: 'Várzea Grande',
+    rondonopolis: 'Rondonópolis', tangara_da_serra: 'Tangará da Serra',
+    sorriso: 'Sorriso', lucas_do_rio_verde: 'Lucas do Rio Verde',
+    caceres: 'Cáceres', alta_floresta: 'Alta Floresta',
+    barra_do_garcas: 'Barra do Garças', colider: 'Colíder',
+    primavera_do_leste: 'Primavera do Leste', nova_mutum: 'Nova Mutum',
+  };
+  if (NOMES[slug]) return NOMES[slug];
+  return slug.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+async function loadMunicipios() {
+  try {
+    const snap = await db.collection('municipios').orderBy('nome').get();
+    if (snap.empty) return;
+    const sel = document.getElementById('filtro-municipio');
+    sel.innerHTML = snap.docs
+      .map(d => {
+        const slug = d.id;
+        const nome = d.data().nome ? d.data().nome : slugToNome(slug);
+        return `<option value="${slug}"${slug === currentMunKey ? ' selected' : ''}>${nome}</option>`;
+      })
+      .join('');
+  } catch(e) {
+    console.warn('Erro ao carregar municípios:', e);
+  }
+}
+
+function updateOrgaoFilter() {
+  const sel = document.getElementById('filtro-orgao');
+  const mun = MUNICIPIOS[currentMunKey];
+  if (mun) {
+    sel.innerHTML = '<option value="">Todos</option>' +
+      mun.orgaos.map(o => `<option value="${o.nome}">${o.nome}</option>`).join('');
+  } else {
+    sel.innerHTML = '<option value="">Todos</option>';
+  }
+  orgaoFiltro = '';
+}
+
+function updateOrgaoFilterFromData(data) {
+  const orgaos = new Set();
+  [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])].forEach(d => {
+    if (d.orgao) orgaos.add(d.orgao);
+  });
+  const sel = document.getElementById('filtro-orgao');
+  const sorted = Array.from(orgaos).sort();
+  sel.innerHTML = '<option value="">Todos</option>' +
+    sorted.map(o => `<option value="${o}">${o}</option>`).join('');
+  orgaoFiltro = '';
+}
+
+function onMunicipioChange(key) {
+  changeMunicipio(key);
+}
+
+function togglePainel() {
+  painelAberto = !painelAberto;
+  const body = document.getElementById('painel-body');
+  const icon = document.getElementById('painel-icon');
+  if (painelAberto) { body.classList.add('open'); icon.textContent = '▲ fechar'; }
+  else              { body.classList.remove('open'); icon.textContent = '▼ abrir'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setDefaultDates() {
+  const fim = new Date();
+  const ini = new Date();
+  ini.setDate(ini.getDate() - 30);
+  document.getElementById('data-ini').value = ini.toISOString().slice(0,10);
+  document.getElementById('data-fim').value = fim.toISOString().slice(0,10);
+}
+
+async function init() {
+  monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+  await loadMunicipios();
+  if (viewSource === 'firebase') await loadMonitor();
+}
+
+// Inicializa
+setDefaultDates();
 init();
 </script>
 </body>
