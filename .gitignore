@@ -11,3 +11,5 @@ firebase_credentials.json
 *serviceAccount*.json
 *firebase-adminsdk*.json
 
+venv/
+.claude/

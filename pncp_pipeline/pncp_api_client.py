@@ -33,6 +33,8 @@ class PNCPClient:
         try:
             response = await self.client.get(endpoint, params=params)
             response.raise_for_status()
+            if response.status_code == 204:
+                return {}
             return response.json()
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error for modality {codigo_modalidade}, page {pagina}: {e.response.status_code} - {e.response.text}")

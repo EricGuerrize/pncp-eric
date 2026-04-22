@@ -59,6 +59,40 @@ async def run_pipeline(data_inicial: str = None, data_final: str = None):
         if not df.empty:
             export_to_excel(df, file_date)
             logger.info(f"Pipeline concluído com sucesso. {len(df)} registros processados.")
+            
+            # Step 6 & 7: Crossmatch Automático e Sincronização Firebase
+            try:
+                from firebase_sync import sincronizar, sincronizar_crossmatch
+                from crossmatch import crossmatch, carregar_aplic
+                
+                # O Firebase_sync tentará puxar config.CREDENTIALS_PATH
+                # Passo 7A: Sincroniza dados normais PNCP primeiro
+                logger.info("=== STEP 7: Sincronizando PNCP (Base) no Firebase ===")
+                sincronizar(df, data_inicial)
+                
+                # Passo 6: Verifica se há arquivos APLIC para cruzar
+                csv_files = list(config.INPUT_DIR.glob("*.csv")) + list(config.INPUT_DIR.glob("*.CSV"))
+                for aplic_file in csv_files:
+                    logger.info(f"=== STEP 6: Cruzamento automático PNCP x APLIC ({aplic_file.name}) ===")
+                    df_aplic = carregar_aplic(aplic_file)
+                    df_cross, _ = crossmatch(df, df_aplic)
+                    
+                    if not df_cross.empty:
+                        # Inferir municipio pela string no nome do arquivo, ex: licitacao_lrv_2026 -> lucas_do_rio_verde
+                        name_lower = aplic_file.name.lower()
+                        mun = "sinop"
+                        if "lrv" in name_lower or "lucas" in name_lower: mun = "lucas_do_rio_verde"
+                        elif "cuiaba" in name_lower: mun = "cuiaba"
+                        elif "sinop" in name_lower: mun = "sinop"
+                        
+                        logger.info(f"=== STEP 7B: Sincronizando resultados do Cruzamento ({mun}) no Firebase ===")
+                        sincronizar_crossmatch(df_cross, municipio=mun)
+                    else:
+                        logger.info(f"Nenhum resultado gerado para o cruzamento de {aplic_file.name}")
+                        
+            except Exception as ex:
+                logger.error(f"Erro nas etapas adicionais (Step 6/7): {ex}", exc_info=True)
+                
         else:
             logger.info("Pipeline concluído. Nenhum registro encontrado para este período.")
 

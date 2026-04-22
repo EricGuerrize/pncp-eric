@@ -14,6 +14,7 @@ Uso standalone:
     python crossmatch.py pncp_contratacoes_MT_*.xlsx licitacao_lrv_2026.csv
 """
 
+from __future__ import annotations
 import re
 import sys
 import csv
