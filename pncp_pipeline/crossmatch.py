@@ -31,14 +31,21 @@ logger = logging.getLogger(__name__)
 # Constantes
 # ---------------------------------------------------------------------------
 
+import json
+
 # DE-PARA: (cod_ug, municipio_normalizado) → CNPJ (14 dígitos sem formatação)
-DE_PARA_UG_CNPJ: dict[tuple[str, str], str] = {
-    ("1111319", "lucas do rio verde"): "24772246000140",
-    ("1113125", "cuiaba"):             "03533064000146",
-    ("1118736", "sinop"):              "00814574000101",  # Câmara Municipal de Sinop
-    ("1113257", "sinop"):              "00571071000144",  # Instituto de Previdência de Sinop
-    ("1112309", "sinop"):              "15024003000132",  # Prefeitura Municipal de Sinop
-}
+DE_PARA_UG_CNPJ: dict[tuple[str, str], str] = {}
+
+def load_orgaos():
+    json_path = Path(__file__).resolve().parent / "input" / "orgaos.json"
+    if json_path.exists():
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for item in data:
+                DE_PARA_UG_CNPJ[(item["ug"], item["municipio"])] = item["cnpj"]
+
+load_orgaos()
+
 
 # Modalidade APLIC (código string) → modalidadeId PNCP (int)
 MAPA_MODALIDADE_APLIC_PARA_PNCP: dict[str, int] = {
