@@ -1,16 +1,15 @@
 """
-backfill_firebase.py — Popula o Firestore com dados históricos PNCP.
+backfill_firebase.py — Popula o Firestore com todos os xlsx existentes em output/.
 
 Uso:
-    python backfill_firebase.py                          # 2026-01-01 até ontem
-    python backfill_firebase.py --start 20260101 --end 20260326
+    python backfill_firebase.py          # lê todos os pncp_contratacoes_MT_*.xlsx
+    python backfill_firebase.py --start 20260201 --end 20260325  # filtra por data
 """
 
 import argparse
 import logging
 import re
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -23,61 +22,58 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def _datas_range(start_str: str, end_str: str):
-    start = date(int(start_str[:4]), int(start_str[4:6]), int(start_str[6:]))
-    end   = date(int(end_str[:4]),   int(end_str[4:6]),   int(end_str[6:]))
-    d = start
-    while d <= end:
-        yield d.strftime("%Y%m%d")
-        d += timedelta(days=1)
+OUTPUT_DIR = Path(__file__).parent / "output"
 
 
-def _carregar_ou_coletar(data_alvo: str) -> pd.DataFrame | None:
-    output_dir = Path(__file__).parent / "output"
-    xlsx_path  = output_dir / f"pncp_contratacoes_MT_{data_alvo}.xlsx"
+def _xlsx_para_processar(start: str = None, end: str = None):
+    """Retorna lista de xlsx de contratações ordenados, opcionalmente filtrados por data."""
+    arquivos = sorted(OUTPUT_DIR.glob("pncp_contratacoes_MT_????????.xlsx"))
+    if start:
+        arquivos = [f for f in arquivos if f.stem.split("_")[-1] >= start]
+    if end:
+        arquivos = [f for f in arquivos if f.stem.split("_")[-1] <= end]
+    return arquivos
 
-    if not xlsx_path.exists():
-        logger.info(f"  Coletando PNCP para {data_alvo}...")
-        import asyncio
-        from main import run_pipeline
-        asyncio.run(run_pipeline(data_inicial=data_alvo, data_final=data_alvo))
 
-    if not xlsx_path.exists():
-        logger.warning(f"  Sem dados para {data_alvo} — pulando.")
+def _carregar(xlsx_path: Path) -> pd.DataFrame | None:
+    try:
+        df = pd.read_excel(xlsx_path, dtype=str)
+        df["orgaoEntidade_cnpj"] = df["orgaoEntidade_cnpj"].astype(str).apply(
+            lambda x: re.sub(r"\D", "", x)
+        )
+        return df
+    except Exception as e:
+        logger.warning(f"  Erro ao ler {xlsx_path.name}: {e}")
         return None
-
-    df = pd.read_excel(xlsx_path, dtype=str)
-    df["orgaoEntidade_cnpj"] = df["orgaoEntidade_cnpj"].astype(str).apply(
-        lambda x: re.sub(r"\D", "", x)
-    )
-    return df
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backfill Firebase com histórico PNCP")
-    parser.add_argument("--start", default="20260101", metavar="YYYYMMDD")
-    parser.add_argument("--end",   default=(date.today() - timedelta(days=1)).strftime("%Y%m%d"), metavar="YYYYMMDD")
+    parser.add_argument("--start", metavar="YYYYMMDD", help="Data inicial (filtro)")
+    parser.add_argument("--end",   metavar="YYYYMMDD", help="Data final (filtro)")
     args = parser.parse_args()
 
     from firebase_sync import sincronizar
 
-    datas = list(_datas_range(args.start, args.end))
-    logger.info(f"Backfill: {args.start} → {args.end} ({len(datas)} dias)")
+    arquivos = _xlsx_para_processar(args.start, args.end)
+    logger.info(f"Backfill: {len(arquivos)} arquivo(s) encontrado(s) em output/")
 
-    total = {"inseridos": 0, "atualizados": 0, "alertas": 0}
+    total = {"inseridos": 0, "atualizados": 0, "alertas": 0, "municipios_processados": 0}
 
-    for i, data_alvo in enumerate(datas, 1):
-        logger.info(f"[{i}/{len(datas)}] {data_alvo}")
-        df = _carregar_ou_coletar(data_alvo)
+    for i, xlsx in enumerate(arquivos, 1):
+        logger.info(f"[{i}/{len(arquivos)}] {xlsx.name}")
+        df = _carregar(xlsx)
         if df is None:
             continue
-        r = sincronizar(df, data_alvo)
-        total["inseridos"]   += r["inseridos"]
-        total["atualizados"] += r["atualizados"]
-        total["alertas"]     += r["alertas"]
+        r = sincronizar(df)
+        total["inseridos"]              += r["inseridos"]
+        total["atualizados"]            += r["atualizados"]
+        total["alertas"]                += r["alertas"]
+        total["municipios_processados"] += r.get("municipios_processados", 0)
 
     print(f"\n=== Backfill concluído ===")
-    print(f"  Inseridos:        {total['inseridos']}")
-    print(f"  Atualizados:      {total['atualizados']}")
-    print(f"  Alertas ativados: {total['alertas']}")
+    print(f"  Arquivos processados: {len(arquivos)}")
+    print(f"  Municípios únicos*:   {total['municipios_processados']} (soma por arquivo)")
+    print(f"  Inseridos:            {total['inseridos']}")
+    print(f"  Atualizados:          {total['atualizados']}")
+    print(f"  Alertas ativados:     {total['alertas']}")

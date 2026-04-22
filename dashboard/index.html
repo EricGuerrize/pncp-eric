@@ -430,6 +430,10 @@
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
     <option value="sinop">Sinop</option>
   </select>
+  <label for="filtro-ano">Ano:</label>
+  <select id="filtro-ano" onchange="onAnoChange(this.value)">
+    <option value="">Todos</option>
+  </select>
   <label for="filtro-orgao">Órgão:</label>
   <select id="filtro-orgao" onchange="onFiltroChange(this.value)">
     <option value="">Todos</option>
@@ -566,6 +570,7 @@ let monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
 
 let abaAtiva    = 'ambos';
 let orgaoFiltro = '';
+let filtroAno   = String(new Date().getFullYear());
 let painelAberto = false;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1057,8 +1062,7 @@ function renderFromCross() {
     municipio:  currentMunKey
   }));
 
-  updateCards({ ambos, apenas_pncp, apenas_aplic });
-  renderTab({ ambos, apenas_pncp, apenas_aplic });
+  renderAll({ ambos, apenas_pncp, apenas_aplic });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1192,9 +1196,9 @@ async function loadMonitor() {
     ]);
 
     const data = { ambos, apenas_pncp, apenas_aplic };
+    updateAnoFilterFromData(data);
     updateOrgaoFilterFromData(data);
-    updateCards(data);
-    renderTab(data);
+    renderAll(data);
 
     // Última atualização
     const all = [...ambos, ...apenas_pncp, ...apenas_aplic];
@@ -1220,14 +1224,22 @@ async function loadMonitor() {
 
 function updateCards(data) {
   const { ambos, apenas_pncp, apenas_aplic } = data;
-  document.getElementById('cnt-ambos').textContent  = ambos.length;
-  document.getElementById('cnt-pncp').textContent   = apenas_pncp.length;
-  document.getElementById('cnt-aplic').textContent  = apenas_aplic.length;
-  document.getElementById('badge-ambos').textContent = ambos.length;
-  document.getElementById('badge-pncp').textContent  = apenas_pncp.length;
-  document.getElementById('badge-aplic').textContent = apenas_aplic.length;
-  const alertas = apenas_pncp.filter(d => d.alertaAtivo).length;
+  const fa = applyFiltros(ambos);
+  const fp = applyFiltros(apenas_pncp);
+  const fc = applyFiltros(apenas_aplic);
+  document.getElementById('cnt-ambos').textContent   = fa.length;
+  document.getElementById('cnt-pncp').textContent    = fp.length;
+  document.getElementById('cnt-aplic').textContent   = fc.length;
+  document.getElementById('badge-ambos').textContent  = fa.length;
+  document.getElementById('badge-pncp').textContent   = fp.length;
+  document.getElementById('badge-aplic').textContent  = fc.length;
+  const alertas = fp.filter(d => d.alertaAtivo).length;
   document.getElementById('cnt-alertas').textContent = alertas;
+}
+
+function renderAll(data) {
+  updateCards(data);
+  renderTab(data);
 }
 
 function renderTab(data) {
@@ -1235,14 +1247,11 @@ function renderTab(data) {
   container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
 
   const { ambos, apenas_pncp, apenas_aplic } = data;
-  const filt = (docs) => orgaoFiltro
-    ? docs.filter(d => (d.orgao||'').toLowerCase().includes(orgaoFiltro.toLowerCase()))
-    : docs;
 
   let html = '';
-  if (abaAtiva === 'ambos')          html = renderAmbos(filt(ambos));
-  else if (abaAtiva === 'apenas_pncp') html = renderApenasPncp(filt(apenas_pncp));
-  else                                html = renderApenasAplic(filt(apenas_aplic));
+  if (abaAtiva === 'ambos')            html = renderAmbos(applyFiltros(ambos));
+  else if (abaAtiva === 'apenas_pncp') html = renderApenasPncp(applyFiltros(apenas_pncp));
+  else                                 html = renderApenasAplic(applyFiltros(apenas_aplic));
 
   container.innerHTML = html;
 }
@@ -1321,23 +1330,15 @@ function switchTab(name, btn) {
   const container = document.getElementById('table-container');
   container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
 
-  if (viewSource === 'analise' && crossResult) {
-    renderFromCross();
-  } else {
-    loadMonitor();
-  }
+  if (viewSource === 'analise' && crossResult) renderFromCross();
+  else if (monitorCache.ambos !== null) renderAll(monitorCache);
+  else loadMonitor();
 }
 
 function onFiltroChange(val) {
   orgaoFiltro = val;
   if (viewSource === 'analise' && crossResult) renderFromCross();
-  else if (monitorCache.ambos) {
-    renderTab({
-      ambos: monitorCache.ambos,
-      apenas_pncp: monitorCache.apenas_pncp,
-      apenas_aplic: monitorCache.apenas_aplic
-    });
-  }
+  else if (monitorCache.ambos !== null) renderAll(monitorCache);
 }
 
 function changeMunicipio(key) {
@@ -1409,16 +1410,45 @@ function updateOrgaoFilter() {
   orgaoFiltro = '';
 }
 
+function updateAnoFilterFromData(data) {
+  const anos = new Set();
+  [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])].forEach(d => {
+    if (d.ano) anos.add(String(d.ano));
+  });
+  const sel = document.getElementById('filtro-ano');
+  const sorted = Array.from(anos).sort().reverse();
+  sel.innerHTML = '<option value="">Todos</option>' +
+    sorted.map(a => `<option value="${a}"${a === filtroAno ? ' selected' : ''}>${a}</option>`).join('');
+  if (sorted.length && !sorted.includes(filtroAno)) filtroAno = sorted[0] || '';
+}
+
 function updateOrgaoFilterFromData(data) {
   const orgaos = new Set();
-  [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])].forEach(d => {
-    if (d.orgao) orgaos.add(d.orgao);
-  });
+  const docs = applyFiltros(
+    [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])],
+    { ignoreOrgao: true }
+  );
+  docs.forEach(d => { if (d.orgao) orgaos.add(d.orgao); });
   const sel = document.getElementById('filtro-orgao');
   const sorted = Array.from(orgaos).sort();
   sel.innerHTML = '<option value="">Todos</option>' +
-    sorted.map(o => `<option value="${o}">${o}</option>`).join('');
-  orgaoFiltro = '';
+    sorted.map(o => `<option value="${o}"${o === orgaoFiltro ? ' selected' : ''}>${o}</option>`).join('');
+}
+
+function applyFiltros(docs, opts = {}) {
+  return docs.filter(d => {
+    if (!opts.ignoreOrgao && orgaoFiltro &&
+        !(d.orgao||'').toLowerCase().includes(orgaoFiltro.toLowerCase())) return false;
+    if (filtroAno && String(d.ano||'') !== filtroAno) return false;
+    return true;
+  });
+}
+
+function onAnoChange(val) {
+  filtroAno = val;
+  updateOrgaoFilterFromData(monitorCache.ambos !== null ? monitorCache : { ambos:[], apenas_pncp:[], apenas_aplic:[] });
+  if (viewSource === 'analise' && crossResult) renderFromCross();
+  else if (monitorCache.ambos !== null) renderAll(monitorCache);
 }
 
 function onMunicipioChange(key) {
