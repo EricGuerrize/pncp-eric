@@ -1,5 +1,5 @@
 #!/bin/bash
-# pncp_sync_daily.sh — Coleta PNCP D-1 e sincroniza com Firebase.
+# pncp_sync_daily.sh — Coleta PNCP D-1 e sincroniza com Firebase (todos os municípios MT).
 # Agendado via launchd: roda todo dia útil às 07:00.
 
 set -e
