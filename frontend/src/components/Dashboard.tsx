@@ -25,8 +25,11 @@ interface Licitacao {
   statusAPLIC: string;
   alertaAtivo?: boolean;
   score_cruzamento?: string;
-  dataPNCP?: any;
-  dataAPLIC?: any;
+}
+
+interface KPIValue {
+  count: number;
+  total: number;
 }
 
 export default function Dashboard() {
@@ -38,11 +41,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // Stats
-  const [kpis, setKpis] = useState({
-    ambos: 0,
-    pncp: 0,
-    aplic: 0,
-    alertas: 0
+  const [kpis, setKpis] = useState<{
+    ambos: KPIValue;
+    pncp: KPIValue;
+    aplic: KPIValue;
+    alertas: KPIValue;
+  }>({
+    ambos: { count: 0, total: 0 },
+    pncp: { count: 0, total: 0 },
+    aplic: { count: 0, total: 0 },
+    alertas: { count: 0, total: 0 }
   });
 
   // Load municipalities on mount
@@ -58,7 +66,6 @@ export default function Dashboard() {
           setMunicipios(muns);
           if (!muns.find(m => m.id === selectedMun)) setSelectedMun(muns[0].id);
         } else {
-          // Fallback if empty db
           setMunicipios([{ id: 'sinop', nome: 'Sinop' }]);
         }
       } catch (err) {
@@ -75,20 +82,22 @@ export default function Dashboard() {
 
     const unsubAmbos = onSnapshot(collection(db, `municipios/${selectedMun}/ambos`), (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      setKpis(prev => ({ ...prev, ambos: items.length }));
+      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+      setKpis(prev => ({ ...prev, ambos: { count: items.length, total } }));
       if (activeTab === 'ambos') { setData(items); setLoading(false); }
     });
 
     const unsubPncp = onSnapshot(collection(db, `municipios/${selectedMun}/apenas_pncp`), (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      const alertas = items.filter(i => i.alertaAtivo).length;
-      setKpis(prev => ({ ...prev, pncp: items.length, alertas }));
+      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+      setKpis(prev => ({ ...prev, pncp: { count: items.length, total } }));
       if (activeTab === 'apenas_pncp') { setData(items); setLoading(false); }
     });
 
     const unsubAplic = onSnapshot(collection(db, `municipios/${selectedMun}/apenas_aplic`), (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      setKpis(prev => ({ ...prev, aplic: items.length }));
+      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+      setKpis(prev => ({ ...prev, aplic: { count: items.length, total } }));
       if (activeTab === 'apenas_aplic') { setData(items); setLoading(false); }
     });
 
@@ -98,6 +107,13 @@ export default function Dashboard() {
       unsubAplic();
     };
   }, [selectedMun, activeTab]);
+
+  useEffect(() => {
+    // Alertas is the sum of discrepancies (PNCP-only + APLIC-only)
+    const totalCount = kpis.pncp.count + kpis.aplic.count;
+    const totalVal = kpis.pncp.total + kpis.aplic.total;
+    setKpis(prev => ({ ...prev, alertas: { count: totalCount, total: totalVal } }));
+  }, [kpis.pncp, kpis.aplic]);
 
   const formatCurrency = (val: number | null) => {
     if (val === null || val === undefined) return '—';
@@ -135,55 +151,59 @@ export default function Dashboard() {
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <KPICard 
-            title="Em Ambos" 
-            value={kpis.ambos} 
-            desc="PNCP + APLIC" 
+            title="Sincronizados" 
+            value={kpis.ambos.total} 
+            secondary={kpis.ambos.count}
+            desc="Presente no PNCP e APLIC" 
             icon={<CheckCircle2 className="w-5 h-5 text-emerald-500" />} 
             color="border-l-emerald-500"
           />
           <KPICard 
-            title="Apenas PNCP" 
-            value={kpis.pncp} 
-            desc="Aguardando APLIC" 
+            title="Falta no APLIC" 
+            value={kpis.pncp.total} 
+            secondary={kpis.pncp.count}
+            desc="No PNCP, mas falta no sistema local" 
             icon={<Clock className="w-5 h-5 text-amber-500" />} 
             color="border-l-amber-500"
           />
           <KPICard 
-            title="Apenas APLIC" 
-            value={kpis.aplic} 
-            desc="Sem PNCP (Falha Grave)" 
+            title="Falta no PNCP" 
+            value={kpis.aplic.total} 
+            secondary={kpis.aplic.count}
+            desc="No APLIC, mas falta no portal nacional" 
             icon={<FileWarning className="w-5 h-5 text-orange-500" />} 
             color="border-l-orange-500"
           />
           <KPICard 
-            title="Alertas (Prazos)" 
-            value={kpis.alertas} 
-            desc="Prazo 3 dias vencido!" 
+            title="Total de Inconsistências" 
+            value={kpis.alertas.total} 
+            secondary={kpis.alertas.count}
+            desc={`${kpis.pncp.count} no APLIC | ${kpis.aplic.count} no PNCP`} 
             icon={<AlertTriangle className="w-5 h-5 text-rose-500" />} 
             color="border-l-rose-500"
-            isAlert={kpis.alertas > 0}
+            isAlert={kpis.alertas.count > 0}
           />
         </div>
 
         {/* Space-efficient Tabs */}
-        <div className="bg-white rounded-t-lg border-b border-slate-200 px-4 pt-3 flex gap-2">
+        <div className="bg-white rounded-t-lg border-b border-slate-200 px-4 pt-3 flex gap-2 overflow-x-auto">
           <TabButton 
             active={activeTab === 'ambos'} 
             onClick={() => setActiveTab('ambos')}
-            label="100% Sincronizados"
-            count={kpis.ambos}
+            label="Sincronizados"
+            count={kpis.ambos.count}
           />
           <TabButton 
             active={activeTab === 'apenas_pncp'} 
             onClick={() => setActiveTab('apenas_pncp')}
             label="Apenas PNCP"
-            count={kpis.pncp}
+            count={kpis.pncp.count}
           />
           <TabButton 
             active={activeTab === 'apenas_aplic'} 
             onClick={() => setActiveTab('apenas_aplic')}
             label="Apenas APLIC"
-            count={kpis.aplic}
+            count={kpis.aplic.count}
           />
         </div>
 
@@ -250,19 +270,30 @@ export default function Dashboard() {
   );
 }
 
-function KPICard({ title, value, desc, icon, color, isAlert }: any) {
+function KPICard({ title, value, secondary, desc, icon, color, isAlert }: any) {
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('pt-BR');
+  };
+
+  const formatCurrency = (num: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
+  };
+
   return (
     <div className={`bg-white rounded-lg p-5 shadow-sm border-l-4 ${color} flex items-center justify-between`}>
-      <div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h3>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis">{title}</h3>
         </div>
-        <div className={`text-2xl font-bold ${isAlert ? 'text-rose-600' : 'text-slate-800'}`}>
-          {value}
+        <div className={`text-xl font-bold truncate ${isAlert ? 'text-rose-600' : 'text-slate-800'}`}>
+          {formatCurrency(value)}
         </div>
-        <p className="text-xs text-slate-400 mt-1">{desc}</p>
+        <div className="flex flex-col mt-0.5">
+          <span className="text-xs font-semibold text-slate-500">{formatNumber(secondary)} licitações</span>
+          <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{desc}</p>
+        </div>
       </div>
-      <div className="p-2 bg-slate-50 rounded-full">
+      <div className="p-2.5 bg-slate-50 rounded-full flex-shrink-0 ml-2">
         {icon}
       </div>
     </div>
@@ -273,7 +304,7 @@ function TabButton({ active, onClick, label, count }: any) {
   return (
     <button 
       onClick={onClick}
-      className={`px-5 py-2.5 text-sm font-medium rounded-t-md transition-colors border-b-2 ${
+      className={`px-5 py-2.5 text-sm font-medium rounded-t-md transition-colors border-b-2 whitespace-nowrap ${
         active 
           ? 'bg-white text-primary-700 border-primary-600 border-x border-t border-x-slate-200 border-t-slate-200' 
           : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
