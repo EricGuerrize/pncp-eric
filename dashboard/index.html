@@ -356,71 +356,18 @@
 <!-- ── Painel de Análise (collapsível) ────────────────────────────────── -->
 <div class="painel">
   <div class="painel-header" onclick="togglePainel()">
-    <span>⚙ Importar e Analisar Dados <span class="tag">Novo</span></span>
+    <span>⚙ Sincronização de Dados Automática <span class="tag">API Backend</span></span>
     <span id="painel-icon" style="font-size:.8rem;color:#888">▼ abrir</span>
   </div>
   <div id="painel-body">
-    <div class="steps">
-
-      <!-- Step 1: Buscar PNCP -->
-      <div class="step" id="step-1">
-        <div class="step-header">
-          <div class="step-num">1</div>
-          <div class="step-title">Buscar PNCP</div>
-        </div>
-        <div class="step-body">
-          <div class="date-row">
-            <label>De&nbsp;<input type="date" id="data-ini" /></label>
-            <label>Até&nbsp;<input type="date" id="data-fim" /></label>
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-primary" id="btn-fetch" onclick="startFetchPNCP()">Buscar</button>
-          </div>
-          <div class="step-status" id="pncp-status">Defina o período e clique em Buscar.</div>
-          <div class="progress-wrap" id="pncp-progress" style="display:none">
-            <div class="progress-bar"><div class="progress-fill" id="pncp-fill"></div></div>
-            <div class="progress-text" id="pncp-prog-text"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 2: Importar APLIC -->
-      <div class="step" id="step-2">
-        <div class="step-header">
-          <div class="step-num">2</div>
-          <div class="step-title">Importar APLIC</div>
-        </div>
-        <div class="step-body">
-          <p style="font-size:.78rem;color:#666;line-height:1.4">
-            Exporte o extrato de licitações do APLIC/TCE-MT em formato CSV e selecione abaixo.
-          </p>
-          <label class="file-btn">
-            <input type="file" id="file-aplic" accept=".csv,.CSV" onchange="onFileAplic(this)" />
-            📂 Selecionar CSV do APLIC
-          </label>
-          <div class="step-status" id="aplic-status">Aguardando arquivo.</div>
-        </div>
-      </div>
-
-      <!-- Step 3: Cruzar e Salvar -->
-      <div class="step" id="step-3">
-        <div class="step-header">
-          <div class="step-num">3</div>
-          <div class="step-title">Cruzar e Salvar</div>
-        </div>
-        <div class="step-body">
-          <p style="font-size:.78rem;color:#666;line-height:1.4">
-            Execute o cruzamento nos dados carregados e, opcionalmente, salve no Firebase para acesso remoto.
-          </p>
-          <div class="btn-row">
-            <button class="btn btn-primary" id="btn-cross" onclick="runCrossMatch()" disabled>Cruzar</button>
-            <button class="btn btn-success" id="btn-save" onclick="saveToFirebase()" disabled>Salvar no Firebase</button>
-          </div>
-          <div class="step-status" id="cross-status">Complete os passos 1 e 2 primeiro.</div>
-        </div>
-      </div>
-
-    </div><!-- /.steps -->
+    <div class="step" style="max-width: 600px; margin: 0 auto; text-align: center;">
+      <h3 style="margin-bottom: 12px; color: #1a3a6b;">Atualizar a Cidade Selecionada</h3>
+      <p style="font-size: .85rem; color: #666; margin-bottom: 12px;">
+        Clique abaixo para baixar os dados do Oracle/APLIC, buscar no PNCP, realizar o crossmatch e atualizar o Firebase automaticamente utilizando nosso Backend Python.
+      </p>
+      <button class="btn btn-primary" id="btn-sync" onclick="startAutoSync()" style="font-size: 1rem; padding: 10px 20px; width: 100%;">🚀 Sincronizar Dados Deste Município</button>
+      <div id="sync-status" class="step-status" style="margin-top: 15px; font-weight: 500;">Pronto. Selecione a cidade no menu abaixo e clique em Sincronizar.</div>
+    </div>
   </div><!-- /#painel-body -->
 </div><!-- /.painel -->
 
@@ -428,9 +375,8 @@
 <div class="toolbar">
   <label for="filtro-municipio">Município:</label>
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
-    <option value="sinop">Sinop</option>
-    <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
     <option value="rondolandia">Rondolândia</option>
+    <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
     <option value="acorizal">Acorizal</option>
     <option value="jangada">Jangada</option>
   </select>
@@ -528,20 +474,6 @@ const MODAL_APLIC_PNCP = {
 };
 
 const MUNICIPIOS = {
-  sinop: {
-    nome: 'Sinop', uf: 'MT',
-    orgaos: [
-      { cnpj:'15024003000132', nome:'Prefeitura Municipal de Sinop',    ugs:['1112309'] },
-      { cnpj:'00814574000101', nome:'Câmara Municipal de Sinop',        ugs:['1118736'] },
-      { cnpj:'00571071000144', nome:'Instituto de Previdência de Sinop', ugs:['1113257'] },
-    ]
-  },
-  cuiaba: {
-    nome: 'Cuiabá', uf: 'MT',
-    orgaos: [
-      { cnpj:'03533064000146', nome:'Prefeitura Municipal de Cuiabá', ugs:['1113125'] },
-    ]
-  },
   lucas_do_rio_verde: {
     nome: 'Lucas do Rio Verde', uf: 'MT',
     orgaos: [
@@ -589,7 +521,7 @@ const firebaseConfig = {
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-let currentMunKey = 'sinop';
+let currentMunKey = 'rondolandia';
 let pncpBuffer   = [];   // registros da API PNCP
 let aplicsBuffer = [];   // registros do CSV APLIC
 let crossResult  = null; // { ambos:[], apenas_pncp:[], apenas_aplic:[] }
@@ -702,6 +634,41 @@ function toYMD(date) {
 // Extrai cnpj do registro PNCP (API retorna obj aninhado)
 function pncpCnpj(r) {
   return cleanCnpj(r.orgaoEntidade?.cnpj || r.orgaoEntidade_cnpj || '');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sincronização Flask Automática
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function startAutoSync() {
+  const btn = document.getElementById('btn-sync');
+  const status = document.getElementById('sync-status');
+  btn.disabled = true;
+  status.innerHTML = '<span class="spinner" style="vertical-align: middle; margin-right: 8px;"></span> Em andamento... Aguarde pelo backend Python (Pode levar de 1 a 2 min).';
+  status.className = 'step-status loading';
+  
+  try {
+    const res = await fetch('http://localhost:5000/sync/' + currentMunKey);
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      status.textContent = '✓ ' + data.message;
+      status.className = 'step-status ok';
+      // Refresh firebase view
+      viewSource = 'firebase';
+      document.getElementById('fonte-chip').textContent = '📡 Firebase';
+      document.getElementById('fonte-chip').className = 'fonte-chip';
+      monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+      await loadMonitor();
+    } else {
+      status.textContent = 'Erro ao sincronizar: ' + (data.message || 'Erro Desconhecido no Servidor');
+      status.className = 'step-status err';
+    }
+  } catch(e) {
+    status.textContent = 'Erro de Rede: Tem certeza que o Servidor Flask (app.py) está ligado na porta 5000? ' + e.message;
+    status.className = 'step-status err';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
