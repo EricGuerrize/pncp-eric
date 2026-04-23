@@ -1,9 +1,25 @@
 # Comandos para rodar na máquina com acesso ao banco
 
+## Estado atual do Firebase (consultado em 23/04/2026)
+
+| Município         | Licitações PNCP | Crossmatch (ambos) |
+|-------------------|-----------------|--------------------|
+| Lucas do Rio Verde | 32             | **57 matches** ✅  |
+| Sinop             | 50              | **48 matches** ✅  |
+| Jangada           | 7               | 1 match (incompleto)|
+| Rondolândia       | 1               | 0                  |
+| Acorizal          | 0               | 0 (sem dados PNCP) |
+
+**O Firebase já tem os dados PNCP de 107 municípios de MT.** Não é necessário re-sincronizar o PNCP.
+
+O que falta: rodar o crossmatch com os dados do Oracle (APLIC) para as 4 cidades.
+
+---
+
 ## Pré-requisitos
 
 1. Ter o arquivo `firebase_credentials.json` na raiz do projeto (`pncp bruno/`)
-2. Ter o `.env` com as credenciais Oracle e o caminho do Firebase:
+2. `.env` com as credenciais:
 
 ```
 ORACLE_USER=...
@@ -25,48 +41,33 @@ git pull
 
 ## Passo 2 — Extrair dados APLIC do Oracle
 
-Puxa as licitações do banco Oracle para as 4 cidades e salva como CSV:
-
 ```bash
 cd pncp_pipeline
 python aplic_extractor.py --cidades rondolandia acorizal jangada "lucas do rio verde" --ano 2026
 ```
 
 **Resultado esperado:**
-- `pncp_pipeline/input/licitacao_rondolandia_2026.csv`
-- `pncp_pipeline/input/licitacao_acorizal_2026.csv`
-- `pncp_pipeline/input/licitacao_jangada_2026.csv`
-- `pncp_pipeline/input/licitacao_lucas_do_rio_verde_2026.csv`
+- `input/licitacao_rondolandia_2026.csv`
+- `input/licitacao_acorizal_2026.csv`
+- `input/licitacao_jangada_2026.csv`
+- `input/licitacao_lucas_do_rio_verde_2026.csv`
 
 ---
 
-## Passo 3 — Coletar licitações do PNCP (se não tiver Excel recente)
+## Passo 3 — Crossmatch + atualizar Firebase
 
-Puxa todas as licitações de MT do Portal Nacional:
-
-```bash
-python main.py --from 20260101 --to 20260423
-```
-
-**Resultado esperado:** arquivo `pncp_pipeline/output/pncp_contratacoes_MT_20260423.xlsx`
-
-> Pule este passo se já existir um `.xlsx` recente na pasta `output/`.
-
----
-
-## Passo 4 — Pipeline completo (PNCP + APLIC → Firebase + Crossmatch)
-
-Este comando faz tudo de uma vez:
-1. Joga **todas** as licitações do PNCP de MT no Firebase
-2. Faz o crossmatch das 4 cidades com os dados do APLIC
-3. Atualiza o Firebase com os resultados
+O Firebase já tem o PNCP. Este comando só faz o crossmatch e atualiza os resultados:
 
 ```bash
 python pipeline_multicidades.py \
   --cidades rondolandia acorizal jangada "lucas do rio verde" \
   --ano 2026 \
-  --skip-oracle
+  --skip-oracle \
+  --skip-pncp-sync
 ```
+
+- `--skip-oracle` → usa os CSVs do Passo 2 (não re-extrai do banco)
+- `--skip-pncp-sync` → não re-sincroniza o PNCP (já está no Firebase)
 
 **Resultado esperado no terminal:**
 ```
@@ -79,7 +80,7 @@ PIPELINE MULTICIDADES — RESUMO
 ============================================================
 ```
 
-Após isso o dashboard em https://pncp-eric.vercel.app mostrará todas as licitações.
+Após isso o dashboard mostrará as licitações cruzadas para as 4 cidades.
 
 ---
 
@@ -94,16 +95,25 @@ FIREBASE_CREDENTIALS_PATH=/caminho/completo/para/firebase_credentials.json
 **Erro de conexão Oracle:**
 Verifique que está na rede interna do TCE-MT e que as credenciais no `.env` estão corretas.
 
-**`KeyError: ug_code` ou erro no extractor:**
+**Teste rápido de conexão Oracle (sem extrair dados):**
 ```bash
 python aplic_extractor.py --dry-run --cidades "lucas do rio verde" --ano 2026
 ```
-Se aparecer o UG code `1111319`, a conexão Oracle está OK.
+Se aparecer o UG code `1111319`, a conexão está OK.
 
-**Quero re-extrair o Oracle também (não pular):**
+**Quero re-extrair do Oracle também:**
+```bash
+python pipeline_multicidades.py \
+  --cidades rondolandia acorizal jangada "lucas do rio verde" \
+  --ano 2026 \
+  --skip-pncp-sync
+```
+(sem `--skip-oracle`)
+
+**Quero refazer tudo do zero (incluindo re-sync PNCP):**
 ```bash
 python pipeline_multicidades.py \
   --cidades rondolandia acorizal jangada "lucas do rio verde" \
   --ano 2026
 ```
-(sem `--skip-oracle`)
+(sem nenhum --skip)

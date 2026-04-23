@@ -283,6 +283,7 @@ def run(
     pncp_excel: str | None = None,
     skip_oracle: bool = False,
     skip_firebase: bool = False,
+    skip_pncp_sync: bool = False,
     pncp_inicio: str | None = None,
     pncp_fim: str | None = None,
 ) -> None:
@@ -305,11 +306,11 @@ def run(
         sys.exit(1)
 
     # ── Passo 2: Sync PNCP completo → Firebase (todos os municípios MT) ────────
-    if not skip_firebase:
+    if not skip_firebase and not skip_pncp_sync:
         logger.info("Sincronizando PNCP completo com Firebase...")
         etapa_sincronizar_pncp(pncp_path)
     else:
-        logger.info("--skip-firebase: sync PNCP pulado")
+        logger.info("Sync PNCP pulado (--skip-firebase ou --skip-pncp-sync)")
 
     # ── Passo 3: Extração Oracle ─────────────────────────────────────────────
     aplic_csvs: dict[str, Path] = {}
@@ -408,7 +409,12 @@ def main():
     parser.add_argument(
         "--skip-firebase",
         action="store_true",
-        help="Pula sync para Firebase (apenas gera Excel de crossmatch)",
+        help="Pula todo sync para Firebase (apenas gera Excel de crossmatch)",
+    )
+    parser.add_argument(
+        "--skip-pncp-sync",
+        action="store_true",
+        help="Pula re-sincronização do PNCP completo (use quando Firebase já está atualizado)",
     )
 
     args = parser.parse_args()
@@ -419,6 +425,7 @@ def main():
         pncp_excel=args.pncp_excel,
         skip_oracle=args.skip_oracle,
         skip_firebase=args.skip_firebase,
+        skip_pncp_sync=args.skip_pncp_sync,
         pncp_inicio=args.pncp_inicio,
         pncp_fim=args.pncp_fim,
     )
