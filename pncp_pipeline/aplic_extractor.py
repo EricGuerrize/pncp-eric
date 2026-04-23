@@ -111,144 +111,118 @@ def _build_aplic_sql(ugs: list[str], ano: int) -> str:
             raise ValueError(f"UG code inválido (não-numérico): '{ug}'")
 
     ugs_str  = ", ".join(f"'{u}'" for u in ugs)
-    ano_str  = str(int(ano))  # valida que é inteiro
+    ano_str  = str(int(ano))
 
     return f"""
     SELECT *
     FROM (
-        -- Parte 1: Licitações regulares (sem adesão a ARP)
+        -- BLOCO 1: LICITAÇÕES NORMAIS
         SELECT DISTINCT
-               P.ENT_CODIGO        AS "Cód. UG",
-               VW.NOME_entidade    AS "UG",
-               VW.MUN_CODIGO       AS "Cód. município",
-               MN.MUN_NOME         AS "Município",
-               P.PLIC_NUMERO       AS "Nº Licitação",
-               PA.PLIC_DATA        AS "Data Abertura",
-               P.MLIC_CODIGO       AS "Cod. Modalidade",
-               M.MLIC_DESCRICAO    AS "Modalidade",
-               P.CG_IDENTIFICACAO  AS "Adesão à Licitação do Orgão",
-               P.EXERCICIO         AS "Exercício",
-               C.CG_NOME           AS "Nome Adesão",
-               PA.PLIC_TIPO        AS "Cod.Tipo",
-               DECODE(PA.PLIC_TIPO,
-                      '1','Preço','2','Técnica','3','Técnica e Preço',
-                      '4','Tarifa','5','Tarifa e técnica',
-                      '6','Contraprestação','7','Contraprestação e técnica') AS "Tipo",
-               PA.PLIC_DATALIMENTRPROPOSTA          AS "Data Limite",
-               PA.PLIC_REGISTROPRECO                AS "Registro de Preço",
-               PA.PLIC_NOMERESPJURIDICO             AS "Responsável Jurídico",
-               PA.PLIC_NUMOAB                       AS "Nº OAB",
-               PA.PLIC_VALORESTIMADO                AS "Valor Estimado",
-               PA.PLIC_VALORCUSTOCOPIA              AS "Custo Cópia Edital",
-               PA.PLIC_OBJETO                       AS "Objetivo",
-               PA.PLIC_MOTIVO                       AS "Motivo",
-               PA.CMPLIC_NUMPORTARIA                AS "Nº Portaria",
-               P.AUTORIZADO_REENVIO                 AS "Reenvio",
-               CASE WHEN PA.PLIC_LOTEITEM = '1' THEN 'Lote' ELSE 'Item' END AS "Lote/Item",
-               (SELECT COUNT(1)
-                FROM aplic2008.EMPENHO@conectprod EMP
-                WHERE P.ENT_CODIGO = EMP.ENT_CODIGO
-                  AND P.PLIC_NUMERO = EMP.PLIC_NUMERO
-                  AND P.MLIC_CODIGO = EMP.MLIC_CODIGO) AS "Empenho(s)",
-               NULL AS "Valor Vencedor",
-               NULL AS "Cod. Situação",
-               NULL AS "Situação",
-               NULL AS "Data Situação",
-               NULL AS "Data Adjudicação",
-               NULL AS "Data Julgamento Proposta",
-               (SELECT COUNT(1)
-                FROM aplic2008.PROCESSO_LICITATORIO_DOTACAO@conectprod PD
-                WHERE PD.ENT_CODIGO = P.ENT_CODIGO AND PD.EXERCICIO = P.EXERCICIO
-                  AND PD.PLIC_NUMERO = P.PLIC_NUMERO AND PD.MLIC_CODIGO = P.MLIC_CODIGO) AS "Qtde.Dotação",
-               P.PLIC_NOMEARQPDF                        AS "Arq.Processo Carona",
-               PA.PLIC_DATAABERTURASESSAOPUBLICA        AS "Data abert. sessão públ.",
-               P.PLIC_NUMLICITACAO                      AS "Nº licitação(Reg. de preço)",
-               P.PLIC_MODALIDADE                        AS "Cód. Modalidade(Reg. de preço)",
-               NULL                                     AS "Modalidade(Reg. de preço)",
-               P.PLIC_NUMATA                            AS "Nº Ata reg. de preço",
-               P.PLIC_NUMPMIMPI                         AS "Nº PMI/MPI",
-               DECODE((SELECT COUNT(1) FROM aplic2008.PROC_LICIT_ATA_REGISTRO_PRECO@conectprod ARP
-                       WHERE ARP.ENT_CODIGO = P.ENT_CODIGO AND ARP.PLIC_NUMERO = P.PLIC_NUMERO
-                         AND ARP.MLIC_CODIGO = P.MLIC_CODIGO), 0, 'NÃO', 'SIM') AS "Possui ARP?",
-               P.RGENV_DATAENVIO    AS "Recebido em...",
-               PLM.PLM_DESCRICAO    AS "Para micro empresa?"
-        FROM aplic2008.PROCESSO_LICITATORIO@conectprod P
-        INNER JOIN aplic2008.MODALIDADE_LICITACAO@conectprod M ON M.MLIC_CODIGO = P.MLIC_CODIGO
-        LEFT  JOIN aplic2008.CADASTRO_GERAL@conectprod C
-               ON P.ENT_CODIGO = C.ENT_CODIGO AND C.EXERCICIO >= 2015
-              AND P.CG_IDENTIFICACAO = C.CG_IDENTIFICACAO
-        INNER JOIN aplic2008.PROC_LICIT_ABERTURA_RETIFIC@conectprod PA
-               ON P.ENT_CODIGO = PA.ENT_CODIGO AND P.EXERCICIO = PA.EXERCICIO
-              AND P.PLIC_NUMERO = PA.PLIC_NUMERO AND P.MLIC_CODIGO = PA.MLIC_CODIGO
-              AND PA.PLIC_SITUACAO = 1
-        LEFT  JOIN aplic2008.PROCESSO_LICITATORIO_DOTACAO@conectprod D
-               ON P.MLIC_CODIGO = D.MLIC_CODIGO AND P.PLIC_NUMERO = D.PLIC_NUMERO
-              AND P.EXERCICIO = D.EXERCICIO AND P.ENT_CODIGO = D.ENT_CODIGO
-        INNER JOIN aplic2008.ENTIDADE@conectprod VW ON P.ENT_CODIGO = VW.CNPJ_CPF_COD_TCE_ENTIDADE
-        INNER JOIN publico.MUNICIPIO@conectprod MN ON MN.MUN_CODIGO = VW.MUN_CODIGO
-        INNER JOIN aplic2008.PROC_LICIT_MICROEMPRESA@conectprod PLM ON PLM.PLM_CODIGO = PA.PLIC_PARAMICROEMPRESA
-        WHERE P.ENT_CODIGO IN ({ugs_str})
-          AND SUBSTR(P.PLIC_NUMERO, 13, 4) IN ('{ano_str}')
-          AND P.MLIC_CODIGO NOT IN ('17', '22', '23', '25')
-
-        UNION
-
-        -- Parte 2: Adesões a Ata de Registro de Preços
-        SELECT DISTINCT
-               P.ENT_CODIGO        AS "Cód. UG",
-               VW.NOME_entidade    AS "UG",
-               VW.MUN_CODIGO       AS "Cód. município",
-               MN.MUN_NOME         AS "Município",
-               P.PLIC_NUMERO       AS "Nº Licitação",
-               NULL                AS "Data Abertura",
-               P.MLIC_CODIGO       AS "Cod. Modalidade",
-               M.MLIC_DESCRICAO    AS "Modalidade",
-               P.CG_IDENTIFICACAO  AS "Adesão à Licitação do Orgão",
-               P.EXERCICIO         AS "Exercício",
-               C.CG_NOME           AS "Nome Adesão",
-               NULL AS "Cod.Tipo",
-               NULL AS "Tipo",
-               NULL AS "Data Limite",
-               NULL AS "Registro de Preço",
-               NULL AS "Responsável Jurídico",
-               NULL AS "Nº OAB",
-               NULL AS "Valor Estimado",
-               NULL AS "Custo Cópia Edital",
-               NULL AS "Objetivo",
-               NULL AS "Motivo",
-               NULL AS "Nº Portaria",
+               P.ENT_CODIGO AS "Cód. UG",
+               TRANSLATE(VW.NOME_entidade, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "UG",
+               VW.MUN_CODIGO AS "Cód. município",
+               TRANSLATE(MN.MUN_NOME, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Município",
+               P.PLIC_NUMERO AS "Nº Licitação",
+               PA.PLIC_DATA AS "Data Abertura",
+               P.MLIC_CODIGO AS "Cod. Modalidade",
+               TRANSLATE(M.MLIC_DESCRICAO, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Modalidade",
+               P.CG_IDENTIFICACAO AS "Adesão à Licitação do Orgão",
+               P.EXERCICIO AS "Exercício",
+               TRANSLATE(C.CG_NOME, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Nome Adesão",
+               PA.PLIC_TIPO AS "Cod.Tipo",
+               DECODE(PA.PLIC_TIPO, '1', 'Preco', '2', 'Tecnica', '3', 'Tecnica e Preco', '4', 'Tarifa', '5', 'Tarifa e tecnica', '6', 'Contraprestacao', '7', 'Contraprestacao e tecnica') AS "Tipo",
+               PA.PLIC_DATALIMENTRPROPOSTA AS "Data Limite",
+               'Nao' AS "Registro de Preco",
+               TRANSLATE(PA.PLIC_NOMERESPJURIDICO, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Responsável Jurídico",
+               PA.PLIC_NUMOAB AS "Nº OAB",
+               PA.PLIC_VALORESTIMADO AS "Valor Estimado",
+               PA.PLIC_VALORCUSTOCOPIA AS "Custo Copia Edital",
+               TRANSLATE(PA.PLIC_OBJETO, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Objetivo",
+               TRANSLATE(PA.PLIC_MOTIVO, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Motivo",
+               PA.CMPLIC_NUMPORTARIA AS "Nº Portaria",
                P.AUTORIZADO_REENVIO AS "Reenvio",
-               NULL AS "Lote/Item",
-               NULL AS "Empenho(s)",
-               NULL AS "Valor Vencedor",
-               NULL AS "Cod. Situação",
-               NULL AS "Situação",
-               NULL AS "Data Situação",
-               NULL AS "Data Adjudicação",
+               '' AS "Lote/Item",
+               0 AS "Empenho(s)",
+               0 AS "Valor Vencedor",
+               NULL AS "Cod. Situacao",
+               '' AS "Situacao",
+               NULL AS "Data Situacao",
+               NULL AS "Data Adjudicacao",
                NULL AS "Data Julgamento Proposta",
-               NULL AS "Qtde.Dotação",
+               0 AS "Qtde.Dotacao",
                P.PLIC_NOMEARQPDF AS "Arq.Processo Carona",
-               NULL              AS "Data abert. sessão públ.",
-               P.PLIC_NUMLICITACAO AS "Nº licitação(Reg. de preço)",
-               P.PLIC_MODALIDADE   AS "Cód. Modalidade(Reg. de preço)",
-               ML.MLIC_DESCRICAO   AS "Modalidade(Reg. de preço)",
-               P.PLIC_NUMATA       AS "Nº Ata reg. de preço",
-               P.PLIC_NUMPMIMPI    AS "Nº PMI/MPI",
-               DECODE((SELECT COUNT(1) FROM aplic2008.PROC_LICIT_ATA_REGISTRO_PRECO@conectprod ARP
-                       WHERE ARP.ENT_CODIGO = P.ENT_CODIGO AND ARP.PLIC_NUMERO = P.PLIC_NUMERO
-                         AND ARP.MLIC_CODIGO = P.MLIC_CODIGO), 0, 'NÃO', 'SIM') AS "Possui ARP?",
-               P.RGENV_DATAENVIO   AS "Recebido em...",
-               NULL                AS "Para micro empresa?"
+               PA.PLIC_DATAABERTURASESSAOPUBLICA AS "Data abert. sessao publ.",
+               P.PLIC_NUMLICITACAO AS "Nº licitacao(Reg. de preco)",
+               P.PLIC_MODALIDADE AS "Cod. Modalidade(Reg. de preco)",
+               '' AS "Modalidade(Reg. de preco)",
+               P.PLIC_NUMATA AS "Nº Ata reg. de preco",
+               P.PLIC_NUMPMIMPI AS "Nº PMI/MPI",
+               'NAO' AS "Possui ARP?",
+               P.RGENV_DATAENVIO AS "Recebido em...",
+               '' AS "Para micro empresa?"
         FROM aplic2008.PROCESSO_LICITATORIO@conectprod P
         INNER JOIN aplic2008.MODALIDADE_LICITACAO@conectprod M ON M.MLIC_CODIGO = P.MLIC_CODIGO
-        LEFT  JOIN aplic2008.MODALIDADE_LICITACAO@conectprod ML ON ML.MLIC_CODIGO = P.PLIC_MODALIDADE
-        LEFT  JOIN aplic2008.CADASTRO_GERAL@conectprod C
-               ON P.ENT_CODIGO = C.ENT_CODIGO AND C.EXERCICIO >= 2015
-              AND P.CG_IDENTIFICACAO = C.CG_IDENTIFICACAO
+        INNER JOIN aplic2008.ENTIDADE@conectprod VW ON P.ENT_CODIGO = VW.CNPJ_CPF_COD_TCE_ENTIDADE
+        INNER JOIN publico.MUNICIPIO@conectprod MN ON MN.MUN_CODIGO = VW.MUN_CODIGO
+        INNER JOIN aplic2008.PROC_LICIT_ABERTURA_RETIFIC@conectprod PA 
+            ON P.ENT_CODIGO = PA.ENT_CODIGO AND P.PLIC_NUMERO = PA.PLIC_NUMERO AND P.MLIC_CODIGO = PA.MLIC_CODIGO
+        LEFT JOIN aplic2008.CADASTRO_GERAL@conectprod C ON P.ENT_CODIGO = C.ENT_CODIGO AND P.CG_IDENTIFICACAO = C.CG_IDENTIFICACAO
+        WHERE P.ENT_CODIGO IN ({ugs_str})
+          AND SUBSTR(P.PLIC_NUMERO, 13, 4) = '{ano_str}'
+          AND P.MLIC_CODIGO NOT IN ('17', '22', '23', '25')
+     
+        UNION ALL
+     
+        -- BLOCO 2: CARONAS / ADESÕES
+        SELECT DISTINCT
+               P.ENT_CODIGO AS "Cód. UG",
+               TRANSLATE(VW.NOME_entidade, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "UG",
+               VW.MUN_CODIGO AS "Cód. município",
+               TRANSLATE(MN.MUN_NOME, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Município",
+               P.PLIC_NUMERO AS "Nº Licitação",
+               NULL AS "Data Abertura",
+               P.MLIC_CODIGO AS "Cod. Modalidade",
+               TRANSLATE(M.MLIC_DESCRICAO, 'ÁÉÍÓÚÀÈÌÒÙÂÊÎÔÛÃÕÄËÏÖÜÇáéíóúàèìòùâêîôûãõäëïöüç', 'AEIOUAEIOUAEIOUAOAEIOUCaeiouaeiouaeiouaoaeiouc') AS "Modalidade",
+               P.CG_IDENTIFICACAO AS "Adesão à Licitação do Orgão",
+               P.EXERCICIO AS "Exercício",
+               '' AS "Nome Adesão",
+               '' AS "Cod.Tipo",
+               '' AS "Tipo",
+               NULL AS "Data Limite",
+               '' AS "Registro de Preco",
+               '' AS "Responsável Jurídico",
+               '' AS "Nº OAB",
+               0 AS "Valor Estimado",
+               0 AS "Custo Copia Edital",
+               '' AS "Objetivo",
+               '' AS "Motivo",
+               '' AS "Nº Portaria",
+               P.AUTORIZADO_REENVIO AS "Reenvio",
+               '' AS "Lote/Item",
+               0 AS "Empenho(s)",
+               0 AS "Valor Vencedor",
+               NULL AS "Cod. Situacao",
+               '' AS "Situacao",
+               NULL AS "Data Situacao",
+               NULL AS "Data Adjudicacao",
+               NULL AS "Data Julgamento Proposta",
+               0 AS "Qtde.Dotacao",
+               P.PLIC_NOMEARQPDF AS "Arq.Processo Carona",
+               NULL AS "Data abert. sessao publ.",
+               P.PLIC_NUMLICITACAO AS "Nº licitacao(Reg. de preco)",
+               P.PLIC_MODALIDADE AS "Cod. Modalidade(Reg. de preco)",
+               '' AS "Modalidade(Reg. de preco)",
+               P.PLIC_NUMATA AS "Nº Ata reg. de preco",
+               P.PLIC_NUMPMIMPI AS "Nº PMI/MPI",
+               'SIM' AS "Possui ARP?",
+               P.RGENV_DATAENVIO AS "Recebido em...",
+               '' AS "Para micro empresa?"
+        FROM aplic2008.PROCESSO_LICITATORIO@conectprod P
+        INNER JOIN aplic2008.MODALIDADE_LICITACAO@conectprod M ON M.MLIC_CODIGO = P.MLIC_CODIGO
         INNER JOIN aplic2008.ENTIDADE@conectprod VW ON P.ENT_CODIGO = VW.CNPJ_CPF_COD_TCE_ENTIDADE
         INNER JOIN publico.MUNICIPIO@conectprod MN ON MN.MUN_CODIGO = VW.MUN_CODIGO
         WHERE P.ENT_CODIGO IN ({ugs_str})
-          AND SUBSTR(P.PLIC_NUMERO, 13, 4) IN ('{ano_str}')
+          AND SUBSTR(P.PLIC_NUMERO, 13, 4) = '{ano_str}'
           AND P.MLIC_CODIGO IN ('17', '22', '23', '25')
     )
     ORDER BY "Município", "UG", "Nº Licitação"
