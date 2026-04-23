@@ -234,11 +234,38 @@ def etapa_crossmatch(
 
 
 # ---------------------------------------------------------------------------
-# Etapa 4: Sync Firebase
+# Etapa 2b: Sync PNCP completo para Firebase (apenas_pncp de todos os municípios)
+# ---------------------------------------------------------------------------
+
+def etapa_sincronizar_pncp(pncp_excel: Path) -> dict:
+    """
+    Lê o Excel PNCP completo de MT e popula o Firebase com TODAS as licitações
+    em 'apenas_pncp' para todos os municípios presentes no arquivo.
+    Este passo deve rodar ANTES do crossmatch.
+    """
+    from firebase_sync import sincronizar
+
+    logger.info(f"[Firebase] Sincronizando PNCP completo: {pncp_excel.name}")
+    df_pncp = pd.read_excel(pncp_excel, dtype=str)
+    logger.info(f"  {len(df_pncp)} licitações carregadas do Excel PNCP")
+
+    data_ref = pncp_excel.stem.split("_")[-1]  # ex: "20260423" do nome do arquivo
+    stats = sincronizar(df_pncp, data_ref=data_ref)
+    logger.info(
+        f"  Sync PNCP concluído: "
+        f"{stats.get('inseridos', 0)} inseridos, "
+        f"{stats.get('atualizados', 0)} atualizados, "
+        f"{stats.get('alertas', 0)} alertas"
+    )
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Etapa 4: Sync Firebase (crossmatch)
 # ---------------------------------------------------------------------------
 
 def etapa_firebase(crossmatch_excel: Path, municipio: str) -> dict:
-    """Sincroniza resultado do crossmatch para Firestore."""
+    """Sincroniza resultado do crossmatch para Firestore (ambos + apenas_aplic)."""
     from firebase_sync import sincronizar_crossmatch
 
     logger.info(f"[Firebase] {_slug(municipio)} ← {crossmatch_excel.name}")
@@ -277,7 +304,14 @@ def run(
         )
         sys.exit(1)
 
-    # ── Passo 2: Extração Oracle ─────────────────────────────────────────────
+    # ── Passo 2: Sync PNCP completo → Firebase (todos os municípios MT) ────────
+    if not skip_firebase:
+        logger.info("Sincronizando PNCP completo com Firebase...")
+        etapa_sincronizar_pncp(pncp_path)
+    else:
+        logger.info("--skip-firebase: sync PNCP pulado")
+
+    # ── Passo 3: Extração Oracle ─────────────────────────────────────────────
     aplic_csvs: dict[str, Path] = {}
 
     if not skip_oracle:

@@ -84,21 +84,27 @@ Verifique que gerou um arquivo `output/pncp_contratacoes_MT_20260423.xlsx` (ou d
 
 ---
 
-## Passo 4 — Crossmatch + Firebase (pipeline completo)
+## Passo 4 — Pipeline completo (PNCP → Firebase → Crossmatch → Firebase)
+
+Este passo faz tudo de uma vez:
+1. Lê o Excel PNCP e joga **todas** as licitações de MT no Firebase (`apenas_pncp`)
+2. Para cada cidade: extrai APLIC do Oracle, faz crossmatch, atualiza Firebase (`ambos` / `apenas_aplic`)
 
 ```bash
 python pipeline_multicidades.py \
   --cidades rondolandia acorizal jangada "lucas do rio verde" \
-  --ano 2026
+  --ano 2026 \
+  --skip-oracle
 ```
 
-O script vai automaticamente:
-1. Usar os CSVs APLIC gerados no Passo 2
-2. Usar o Excel PNCP mais recente em `output/`
-3. Rodar crossmatch para cada cidade
-4. Sincronizar resultados para o Firebase (Firestore)
+> **Nota:** `--skip-oracle` pula a extração Oracle e usa os CSVs do Passo 2 que já existem.
+> Remova `--skip-oracle` se quiser re-extrair do banco.
 
-**Resultado esperado:** Resumo no terminal com contagem de matches por município.
+**Resultado esperado:**
+- Firebase populado com licitações PNCP de **todos** os municípios de MT em `apenas_pncp/`
+- Matches das 4 cidades movidos para `ambos/`
+- Registros só no APLIC em `apenas_aplic/`
+- Resumo no terminal com contagem por cidade
 
 ---
 

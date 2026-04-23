@@ -1301,17 +1301,8 @@ function changeMunicipio(key) {
   pncpBuffer = []; aplicsBuffer = []; crossResult = null;
   monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
   viewSource = 'firebase';
-  document.getElementById('fonte-chip').textContent = '📡 Firebase';
-  document.getElementById('fonte-chip').className = 'fonte-chip';
-
-  // Reset steps
-  ['step-1','step-2','step-3'].forEach(id => document.getElementById(id).className = 'step');
-  document.getElementById('pncp-status').textContent = 'Defina o período e clique em Buscar.';
-  document.getElementById('aplic-status').textContent = 'Aguardando arquivo.';
-  document.getElementById('cross-status').textContent = 'Complete os passos 1 e 2 primeiro.';
-  document.getElementById('btn-cross').disabled = true;
-  document.getElementById('btn-save').disabled = true;
-  document.getElementById('pncp-progress').style.display = 'none';
+  const chip = document.getElementById('fonte-chip');
+  if (chip) { chip.textContent = '📡 Firebase'; chip.className = 'fonte-chip'; }
 
   init();
 }
@@ -1334,6 +1325,13 @@ async function loadMunicipios() {
     const snap = await db.collection('municipios').orderBy('nome').get();
     if (snap.empty) return;
     const sel = document.getElementById('filtro-municipio');
+    const slugsDisponiveis = snap.docs.map(d => d.id);
+
+    // Se o município atual não existe no Firebase, usa o primeiro disponível
+    if (!slugsDisponiveis.includes(currentMunKey)) {
+      currentMunKey = slugsDisponiveis[0];
+    }
+
     sel.innerHTML = snap.docs
       .map(d => {
         const slug = d.id;
@@ -1341,6 +1339,11 @@ async function loadMunicipios() {
         return `<option value="${slug}"${slug === currentMunKey ? ' selected' : ''}>${nome}</option>`;
       })
       .join('');
+
+    // Atualiza header com nome do município selecionado
+    const nomeSelecionado = snap.docs.find(d => d.id === currentMunKey)?.data().nome
+      || slugToNome(currentMunKey);
+    document.getElementById('header-sub').textContent = `${nomeSelecionado} — MT · 2026`;
   } catch(e) {
     console.warn('Erro ao carregar municípios:', e);
   }
