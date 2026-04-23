@@ -353,23 +353,7 @@
   </div>
 </header>
 
-<!-- ── Painel de Análise (collapsível) ────────────────────────────────── -->
-<div class="painel">
-  <div class="painel-header" onclick="togglePainel()">
-    <span>⚙ Sincronização de Dados Automática <span class="tag">API Backend</span></span>
-    <span id="painel-icon" style="font-size:.8rem;color:#888">▼ abrir</span>
-  </div>
-  <div id="painel-body">
-    <div class="step" style="max-width: 600px; margin: 0 auto; text-align: center;">
-      <h3 style="margin-bottom: 12px; color: #1a3a6b;">Atualizar a Cidade Selecionada</h3>
-      <p style="font-size: .85rem; color: #666; margin-bottom: 12px;">
-        Clique abaixo para baixar os dados do Oracle/APLIC, buscar no PNCP, realizar o crossmatch e atualizar o Firebase automaticamente utilizando nosso Backend Python.
-      </p>
-      <button class="btn btn-primary" id="btn-sync" onclick="startAutoSync()" style="font-size: 1rem; padding: 10px 20px; width: 100%;">🚀 Sincronizar Dados Deste Município</button>
-      <div id="sync-status" class="step-status" style="margin-top: 15px; font-weight: 500;">Pronto. Selecione a cidade no menu abaixo e clique em Sincronizar.</div>
-    </div>
-  </div><!-- /#painel-body -->
-</div><!-- /.painel -->
+<!-- Painel de Sincronização Removido - Apenas visualização via Firebase -->
 
 <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
 <div class="toolbar">
@@ -636,40 +620,7 @@ function pncpCnpj(r) {
   return cleanCnpj(r.orgaoEntidade?.cnpj || r.orgaoEntidade_cnpj || '');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Sincronização Flask Automática
-// ═══════════════════════════════════════════════════════════════════════════
 
-async function startAutoSync() {
-  const btn = document.getElementById('btn-sync');
-  const status = document.getElementById('sync-status');
-  btn.disabled = true;
-  status.innerHTML = '<span class="spinner" style="vertical-align: middle; margin-right: 8px;"></span> Em andamento... Aguarde pelo backend Python (Pode levar de 1 a 2 min).';
-  status.className = 'step-status loading';
-  
-  try {
-    const res = await fetch('http://localhost:5000/sync/' + currentMunKey);
-    const data = await res.json();
-    if (res.ok && data.status === 'success') {
-      status.textContent = '✓ ' + data.message;
-      status.className = 'step-status ok';
-      // Refresh firebase view
-      viewSource = 'firebase';
-      document.getElementById('fonte-chip').textContent = '📡 Firebase';
-      document.getElementById('fonte-chip').className = 'fonte-chip';
-      monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
-      await loadMonitor();
-    } else {
-      status.textContent = 'Erro ao sincronizar: ' + (data.message || 'Erro Desconhecido no Servidor');
-      status.className = 'step-status err';
-    }
-  } catch(e) {
-    status.textContent = 'Erro de Rede: Tem certeza que o Servidor Flask (app.py) está ligado na porta 5000? ' + e.message;
-    status.className = 'step-status err';
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEP 1 — BUSCA PNCP
