@@ -10,7 +10,7 @@ Execute os passos abaixo **em ordem** no terminal, dentro do diretório `pncp_pi
 cd /caminho/para/o/projeto/pncp\ bruno/pncp_pipeline
 ```
 
-Verifique que o `.env` existe e tem as credenciais Oracle:
+Verifique que o `.env` existe e tem as credenciais Oracle **e Firebase**:
 
 ```bash
 cat .env
@@ -18,6 +18,20 @@ cat .env
 # ORACLE_USER=...
 # ORACLE_PASSWORD=...
 # ORACLE_DSN=...
+# FIREBASE_CREDENTIALS_PATH=/caminho/absoluto/para/firebase_credentials.json
+```
+
+Se a linha `FIREBASE_CREDENTIALS_PATH` não existir no `.env`, adicione apontando para o arquivo
+`firebase_credentials.json` que você tem localmente (NÃO commite esse arquivo no git):
+
+```bash
+echo 'FIREBASE_CREDENTIALS_PATH=/caminho/absoluto/para/firebase_credentials.json' >> ../.env
+```
+
+Substitua `/caminho/absoluto/para/firebase_credentials.json` pelo caminho real do arquivo na sua máquina.
+Se o arquivo estiver na raiz do projeto, use algo como:
+```
+FIREBASE_CREDENTIALS_PATH=/Users/seu_usuario/pncp bruno/firebase_credentials.json
 ```
 
 ---

@@ -34,12 +34,16 @@ Estrutura no Firestore:
 
 import argparse
 import logging
+import os
 import re
 import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +51,15 @@ logger = logging.getLogger(__name__)
 # Configuração
 # ---------------------------------------------------------------------------
 
-CREDENTIALS_PATH   = Path(__file__).resolve().parent.parent / "firebase_credentials.json"
+def _resolver_credentials_path() -> Path:
+    # 1. Variável de ambiente explícita
+    env_path = os.getenv("FIREBASE_CREDENTIALS_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if env_path:
+        return Path(env_path)
+    # 2. Fallback: raiz do projeto (comportamento original)
+    return Path(__file__).resolve().parent.parent / "firebase_credentials.json"
+
+CREDENTIALS_PATH = _resolver_credentials_path()
 COLECAO_MUNICIPIOS = "municipios"
 
 SUB_APENAS_PNCP  = "apenas_pncp"
