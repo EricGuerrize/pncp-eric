@@ -91,8 +91,9 @@ def descobrir_ugs(cidades: list[str]) -> pd.DataFrame:
     if not blocos:
         return pd.DataFrame()
 
-    resultado = pd.concat(blocos, ignore_index=True).drop_duplicates(subset=["ug_code"])
+    resultado = pd.concat(blocos, ignore_index=True)
     resultado.columns = resultado.columns.str.lower()
+    resultado = resultado.drop_duplicates(subset=["ug_code"])
     return resultado
 
 

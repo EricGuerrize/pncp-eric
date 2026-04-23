@@ -429,6 +429,10 @@
   <label for="filtro-municipio">Município:</label>
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
     <option value="sinop">Sinop</option>
+    <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
+    <option value="rondolandia">Rondolândia</option>
+    <option value="acorizal">Acorizal</option>
+    <option value="jangada">Jangada</option>
   </select>
   <label for="filtro-ano">Ano:</label>
   <select id="filtro-ano" onchange="onAnoChange(this.value)">
@@ -542,6 +546,32 @@ const MUNICIPIOS = {
     nome: 'Lucas do Rio Verde', uf: 'MT',
     orgaos: [
       { cnpj:'24772246000140', nome:'Prefeitura Municipal de Lucas do Rio Verde', ugs:['1111319'] },
+      { cnpj:'24772220000100', nome:'CAMARA MUNICIPAL DE LUCAS DO RIO VERDE', ugs:['1116649'] },
+      { cnpj:'24977548000154', nome:'INSTITUTO MUNICIPAL DE PREVIDENCIA DAS SERVIDORES DE LUCAS DO RIO VERDE/MT', ugs:['1117951'] },
+      { cnpj:'01377043000153', nome:'SERVICO AUTONOMO DE AGUA E ESGOTO DE LUCAS DO RIO VERDE', ugs:['1136555'] },
+    ]
+  },
+  rondolandia: {
+    nome: 'Rondolândia', uf: 'MT',
+    orgaos: [
+      { cnpj:'04221486000149', nome:'PREFEITURA MUNICIPAL DE RONDOLANDIA', ugs:['1124981'] },
+      { cnpj:'04222548000137', nome:'CAMARA MUNICIPAL DE RONDOLANDIA', ugs:['1112655'] },
+    ]
+  },
+  acorizal: {
+    nome: 'Acorizal', uf: 'MT',
+    orgaos: [
+      { cnpj:'03507571000105', nome:'PREFEITURA MUNICIPAL DE ACORIZAL', ugs:['1113216'] },
+      { cnpj:'26802330000194', nome:'CAMARA MUNICIPAL DE ACORIZAL', ugs:['1118322'] },
+      { cnpj:'13490452000140', nome:'FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DE ACORIZAL', ugs:['1153949'] },
+    ]
+  },
+  jangada: {
+    nome: 'Jangada', uf: 'MT',
+    orgaos: [
+      { cnpj:'24772147000168', nome:'PREFEITURA MUNICIPAL DE JANGADA', ugs:['1120724'] },
+      { cnpj:'24772071000170', nome:'CAMARA MUNICIPAL DE JANGADA', ugs:['1115542'] },
+      { cnpj:'35547084000162', nome:'FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DOS SERVIDORES DE JANGADA/MT', ugs:['1159581'] },
     ]
   }
 };

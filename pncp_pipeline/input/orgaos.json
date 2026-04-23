@@ -1,7 +1,98 @@
 [
-  { "ug": "1111319", "municipio": "lucas do rio verde", "cnpj": "24772246000140", "nome": "Prefeitura Municipal de Lucas do Rio Verde" },
-  { "ug": "1113125", "municipio": "cuiaba", "cnpj": "03533064000146", "nome": "Prefeitura Municipal de Cuiabá" },
-  { "ug": "1118736", "municipio": "sinop", "cnpj": "00814574000101", "nome": "Câmara Municipal de Sinop" },
-  { "ug": "1113257", "municipio": "sinop", "cnpj": "00571071000144", "nome": "Instituto de Previdência de Sinop" },
-  { "ug": "1112309", "municipio": "sinop", "cnpj": "15024003000132", "nome": "Prefeitura Municipal de Sinop" }
+  {
+    "ug": "1111319",
+    "municipio": "lucas do rio verde",
+    "cnpj": "24772246000140",
+    "nome": "Prefeitura Municipal de Lucas do Rio Verde"
+  },
+  {
+    "ug": "1113125",
+    "municipio": "cuiaba",
+    "cnpj": "03533064000146",
+    "nome": "Prefeitura Municipal de Cuiabá"
+  },
+  {
+    "ug": "1118736",
+    "municipio": "sinop",
+    "cnpj": "00814574000101",
+    "nome": "Câmara Municipal de Sinop"
+  },
+  {
+    "ug": "1113257",
+    "municipio": "sinop",
+    "cnpj": "00571071000144",
+    "nome": "Instituto de Previdência de Sinop"
+  },
+  {
+    "ug": "1112309",
+    "municipio": "sinop",
+    "cnpj": "15024003000132",
+    "nome": "Prefeitura Municipal de Sinop"
+  },
+  {
+    "ug": "1112655",
+    "municipio": "rondolandia",
+    "cnpj": "04222548000137",
+    "nome": "CAMARA MUNICIPAL DE RONDOLANDIA"
+  },
+  {
+    "ug": "1124981",
+    "municipio": "rondolandia",
+    "cnpj": "04221486000149",
+    "nome": "PREFEITURA MUNICIPAL DE RONDOLANDIA"
+  },
+  {
+    "ug": "1118322",
+    "municipio": "acorizal",
+    "cnpj": "26802330000194",
+    "nome": "CAMARA MUNICIPAL DE ACORIZAL"
+  },
+  {
+    "ug": "1153949",
+    "municipio": "acorizal",
+    "cnpj": "13490452000140",
+    "nome": "FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DE ACORIZAL"
+  },
+  {
+    "ug": "1113216",
+    "municipio": "acorizal",
+    "cnpj": "03507571000105",
+    "nome": "PREFEITURA MUNICIPAL DE ACORIZAL"
+  },
+  {
+    "ug": "1115542",
+    "municipio": "jangada",
+    "cnpj": "24772071000170",
+    "nome": "CAMARA MUNICIPAL DE JANGADA"
+  },
+  {
+    "ug": "1159581",
+    "municipio": "jangada",
+    "cnpj": "35547084000162",
+    "nome": "FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DOS SERVIDORES DE JANGADA/MT"
+  },
+  {
+    "ug": "1120724",
+    "municipio": "jangada",
+    "cnpj": "24772147000168",
+    "nome": "PREFEITURA MUNICIPAL DE JANGADA"
+  },
+  {
+    "ug": "1116649",
+    "municipio": "lucas do rio verde",
+    "cnpj": "24772220000100",
+    "nome": "CAMARA MUNICIPAL DE LUCAS DO RIO VERDE"
+  },
+  {
+    "ug": "1117951",
+    "municipio": "lucas do rio verde",
+    "cnpj": "24977548000154",
+    "nome": "INSTITUTO MUNICIPAL DE PREVIDENCIA SOCIAL DOS SERVIDORES DE LUCAS DO RIO VERDE/MT"
+  },
+  {
+    "ug": "1136555",
+    "municipio": "lucas do rio verde",
+    "cnpj": "01377043000153",
+    "nome": "SERVICO AUTONOMO DE AGUA E ESGOTO DE LUCAS DO RIO VERDE"
+  }
 ]
