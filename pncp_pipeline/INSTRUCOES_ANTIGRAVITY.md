@@ -1,155 +1,111 @@
 # Instruções para o Antigravity — Pipeline Multicidades
 
-Execute os passos abaixo **em ordem** no terminal, dentro do diretório `pncp_pipeline/`.
+## O que este pipeline faz
+
+1. Extrai as licitações do Oracle (APLIC/TCE-MT) para as cidades selecionadas
+2. Puxa os dados PNCP correspondentes **diretamente do Firebase** (já sincronizados)
+3. Faz o crossmatch em memória (Oracle × Firebase)
+4. Grava os resultados de volta no Firebase (`ambos/` e `apenas_aplic/`)
+
+> **Nenhum arquivo Excel é necessário.** O Firebase já tem as licitações PNCP
+> de 107 municípios de MT — o pipeline lê dali direto.
 
 ---
 
 ## Pré-requisitos
 
-```bash
-cd /caminho/para/o/projeto/pncp\ bruno/pncp_pipeline
+Verifique que o `.env` existe em `pncp_pipeline/` (ou na raiz do projeto) com:
+
 ```
-
-Verifique que o `.env` existe e tem as credenciais Oracle **e Firebase**:
-
-```bash
-cat .env
-# Deve conter:
-# ORACLE_USER=...
-# ORACLE_PASSWORD=...
-# ORACLE_DSN=...
-# FIREBASE_CREDENTIALS_PATH=/caminho/absoluto/para/firebase_credentials.json
-```
-
-Se a linha `FIREBASE_CREDENTIALS_PATH` não existir no `.env`, adicione apontando para o arquivo
-`firebase_credentials.json` que você tem localmente (NÃO commite esse arquivo no git):
-
-```bash
-echo 'FIREBASE_CREDENTIALS_PATH=/caminho/absoluto/para/firebase_credentials.json' >> ../.env
-```
-
-Substitua `/caminho/absoluto/para/firebase_credentials.json` pelo caminho real do arquivo na sua máquina.
-Se o arquivo estiver na raiz do projeto, use algo como:
-```
-FIREBASE_CREDENTIALS_PATH=/Users/seu_usuario/pncp bruno/firebase_credentials.json
+ORACLE_USER=...
+ORACLE_PASSWORD=...
+ORACLE_DSN=ip_do_banco:1521/nome_do_servico
+FIREBASE_CREDENTIALS_PATH=/caminho/absoluto/para/firebase_credentials.json
 ```
 
 ---
 
-## Passo 1 — Teste de conexão Oracle (dry-run)
-
-Este passo só descobre os UG codes sem extrair dados. Serve para verificar se a conexão está funcionando.
+## Passo 1 — Atualizar repositório
 
 ```bash
-python aplic_extractor.py \
-  --dry-run \
+cd "pncp bruno"
+git pull
+```
+
+---
+
+## Passo 2 — Executar o pipeline
+
+Um único comando. Extrai Oracle + cruza com PNCP do Firebase + atualiza Firebase:
+
+```bash
+cd pncp_pipeline
+
+python pipeline_multicidades.py \
   --cidades rondolandia acorizal jangada "lucas do rio verde" \
-  --ano 2026
+  --ano 2026 \
+  --skip-pncp-sync
 ```
 
-**Resultado esperado:** Tabela com UG codes e nomes das entidades encontradas.
+**Flags:**
+- `--skip-pncp-sync` → não re-sincroniza PNCP (Firebase já está atualizado)
+- Sem `--skip-oracle` → extrai do Oracle (comportamento padrão)
 
-Se "lucas do rio verde" aparecer com UG code `1111319`, a conexão está OK.
+**Resultado esperado no terminal:**
+```
+PIPELINE MULTICIDADES — RESUMO
+============================================================
+  rondolandia          ambos:  XX  apenas_aplic:  XX
+  acorizal             ambos:  XX  apenas_aplic:  XX
+  jangada              ambos:  XX  apenas_aplic:  XX
+  lucas_do_rio_verde   ambos:  XX  apenas_aplic:  XX
+============================================================
+```
+
+Após isso, o dashboard mostrará os resultados atualizados.
 
 ---
 
-## Passo 2 — Extração APLIC do Oracle
-
-Extrai os dados de licitação APLIC para as 4 cidades, salva CSVs em `input/` e atualiza `orgaos.json`:
-
-```bash
-python aplic_extractor.py \
-  --cidades rondolandia acorizal jangada "lucas do rio verde" \
-  --ano 2026
-```
-
-**Resultado esperado:**
-- `input/licitacao_rondolandia_2026.csv`
-- `input/licitacao_acorizal_2026.csv`
-- `input/licitacao_jangada_2026.csv`
-- `input/licitacao_lucas_do_rio_verde_2026.csv`
-- `orgaos.json` atualizado com UG codes e CNPJs das novas cidades
-
----
-
-## Passo 3 — Coleta PNCP (pular se já tiver Excel atualizado)
-
-Se não tiver um Excel PNCP recente em `output/`, colete agora:
-
-```bash
-python main.py --from 20260101 --to 20260423
-```
-
-Verifique que gerou um arquivo `output/pncp_contratacoes_MT_20260423.xlsx` (ou data similar).
-
----
-
-## Passo 4 — Pipeline completo (PNCP → Firebase → Crossmatch → Firebase)
-
-Este passo faz tudo de uma vez:
-1. Lê o Excel PNCP e joga **todas** as licitações de MT no Firebase (`apenas_pncp`)
-2. Para cada cidade: extrai APLIC do Oracle, faz crossmatch, atualiza Firebase (`ambos` / `apenas_aplic`)
+## Se quiser pular a extração Oracle (usar CSVs já gerados)
 
 ```bash
 python pipeline_multicidades.py \
   --cidades rondolandia acorizal jangada "lucas do rio verde" \
   --ano 2026 \
-  --skip-oracle
+  --skip-oracle \
+  --skip-pncp-sync
 ```
-
-> **Nota:** `--skip-oracle` pula a extração Oracle e usa os CSVs do Passo 2 que já existem.
-> Remova `--skip-oracle` se quiser re-extrair do banco.
-
-**Resultado esperado:**
-- Firebase populado com licitações PNCP de **todos** os municípios de MT em `apenas_pncp/`
-- Matches das 4 cidades movidos para `ambos/`
-- Registros só no APLIC em `apenas_aplic/`
-- Resumo no terminal com contagem por cidade
 
 ---
 
 ## Resolução de problemas
 
-### "Nenhuma entidade encontrada para: rondolandia"
-- O município pode não ter licitações no APLIC ou o nome pode ter variação.
-- Tente com acento: `"rondolândia"` ou verifique o nome exato no APLIC.
-
-### "CSV APLIC não encontrado"
-- Certifique-se que o Passo 2 foi concluído com sucesso.
-- Use `--skip-oracle` se os CSVs já existem.
-
 ### Erro de conexão Oracle
-- Verifique que está na rede correta (VPN ou rede interna TCE-MT).
-- Verifique as credenciais em `.env`.
+```
+Verifique que está na rede interna do TCE-MT e que as credenciais no .env estão corretas.
+```
 
-### Crossmatch vazio para uma cidade
-- A cidade pode não ter CNPJs mapeados em `orgaos.json`.
-- Verifique se o `aplic_extractor.py` atualizou o arquivo com CNPJs válidos.
-
----
-
-## Comandos úteis
-
+Teste rápido de conexão (sem extrair dados):
 ```bash
-# Verificar orgaos.json atualizado
-cat input/orgaos.json
+python aplic_extractor.py --dry-run --cidades "lucas do rio verde" --ano 2026
+```
+Se aparecer o UG code `1111319`, a conexão está OK.
 
-# Ver CSVs gerados
+### "Nenhum dado PNCP no Firebase"
+O Firebase não tem dados para o município. Execute:
+```bash
+python pipeline_multicidades.py --cidades <cidade> --ano 2026 --pncp-inicio 20260101 --pncp-fim 20260424
+```
+Isso coleta o PNCP da API e sincroniza com Firebase antes de fazer o crossmatch.
+
+### `firebase_credentials.json` não encontrado
+Adicione no `.env`:
+```
+FIREBASE_CREDENTIALS_PATH=/caminho/completo/para/firebase_credentials.json
+```
+
+### Quero ver os CSVs e Excels gerados
+```bash
 ls -la input/licitacao_*_2026.csv
-
-# Ver Excels de crossmatch gerados
 ls -la output/crossmatch_*_2026.xlsx
-
-# Rodar só crossmatch+Firebase sem re-extrair Oracle
-python pipeline_multicidades.py \
-  --cidades rondolandia acorizal jangada "lucas do rio verde" \
-  --ano 2026 \
-  --skip-oracle
-
-# Rodar só crossmatch sem Firebase (para testar)
-python pipeline_multicidades.py \
-  --cidades rondolandia \
-  --ano 2026 \
-  --skip-oracle \
-  --skip-firebase
 ```

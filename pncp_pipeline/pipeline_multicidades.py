@@ -150,23 +150,37 @@ def etapa_coletar_pncp(inicio: str, fim: str) -> Path | None:
 def etapa_crossmatch(
     municipio: str,
     aplic_csv: Path,
-    pncp_excel: Path,
     ano: int,
+    pncp_excel: Path | None = None,
 ) -> Path | None:
     """
     Executa crossmatch para um município e salva Excel de resultado.
+
+    Fonte PNCP (em ordem de preferência):
+      1. pncp_excel — arquivo Excel local (quando disponível)
+      2. Firebase    — carrega apenas_pncp + ambos do Firestore (padrão quando sem Excel)
+
     Retorna caminho do Excel de resultado ou None em caso de erro.
     """
     from crossmatch import crossmatch, carregar_aplic, load_orgaos
 
-    load_orgaos()  # garante que orgaos.json está carregado (pode ter sido atualizado)
+    load_orgaos()
 
     municipio_slug = _slug(municipio)
     logger.info(f"[Crossmatch] {municipio_slug}")
 
-    # Carrega PNCP completo de MT
-    df_pncp = pd.read_excel(pncp_excel, dtype=str)
-    logger.info(f"  PNCP carregado: {len(df_pncp)} registros (MT completo)")
+    # Carrega PNCP: Excel local ou Firebase
+    if pncp_excel is not None:
+        df_pncp = pd.read_excel(pncp_excel, dtype=str)
+        logger.info(f"  PNCP carregado do Excel: {len(df_pncp)} registros (MT completo)")
+    else:
+        from firebase_sync import carregar_pncp_municipio
+        df_pncp = carregar_pncp_municipio(municipio_slug)
+        if df_pncp.empty:
+            logger.error(f"  Nenhum dado PNCP no Firebase para {municipio_slug}. "
+                         "Execute a sincronização PNCP antes.")
+            return None
+        logger.info(f"  PNCP carregado do Firebase: {len(df_pncp)} registros ({municipio_slug})")
 
     # Carrega APLIC do município
     if not aplic_csv.exists():
@@ -292,7 +306,7 @@ def run(
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
 
-    # ── Passo 1: Excel PNCP ──────────────────────────────────────────────────
+    # ── Passo 1: Excel PNCP (opcional) ───────────────────────────────────────
     pncp_path = _encontrar_pncp_excel(pncp_excel)
 
     if pncp_path is None and pncp_inicio and pncp_fim:
@@ -300,15 +314,17 @@ def run(
         pncp_path = etapa_coletar_pncp(pncp_inicio, pncp_fim)
 
     if pncp_path is None:
-        logger.error(
-            "Excel PNCP não encontrado. Informe --pncp-excel ou use --pncp-inicio/--pncp-fim."
+        logger.info(
+            "Excel PNCP não encontrado — PNCP será lido do Firebase por município. "
+            "Use --pncp-excel ou --pncp-inicio/--pncp-fim para usar um arquivo local."
         )
-        sys.exit(1)
 
     # ── Passo 2: Sync PNCP completo → Firebase (todos os municípios MT) ────────
-    if not skip_firebase and not skip_pncp_sync:
+    if pncp_path is not None and not skip_firebase and not skip_pncp_sync:
         logger.info("Sincronizando PNCP completo com Firebase...")
         etapa_sincronizar_pncp(pncp_path)
+    elif pncp_path is None:
+        logger.info("Sync PNCP pulado (sem Excel local — usando Firebase como fonte)")
     else:
         logger.info("Sync PNCP pulado (--skip-firebase ou --skip-pncp-sync)")
 
@@ -329,7 +345,7 @@ def run(
                 logger.warning(f"  CSV não encontrado: {candidate.name}")
 
     if not aplic_csvs:
-        logger.error("Nenhum CSV APLIC disponível. Abortando.")
+        logger.error("Nenhum CSV APLIC disponível. Verifique a conexão Oracle ou os arquivos em input/.")
         sys.exit(1)
 
     # ── Passos 3+4: Crossmatch → Firebase por cidade ─────────────────────────
@@ -343,8 +359,8 @@ def run(
             logger.warning(f"Sem CSV APLIC para '{cidade}' (slug: {slug}). Pulando.")
             continue
 
-        # Crossmatch
-        crossmatch_xlsx = etapa_crossmatch(cidade, aplic_csv, pncp_path, ano)
+        # Crossmatch (pncp_path pode ser None → carrega do Firebase)
+        crossmatch_xlsx = etapa_crossmatch(cidade, aplic_csv, ano, pncp_excel=pncp_path)
         if crossmatch_xlsx is None:
             continue
 
