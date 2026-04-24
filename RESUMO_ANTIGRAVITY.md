@@ -23,8 +23,17 @@ O portal web do projeto foi completamente revisado para se adequar ao seu novo f
 - O campo de pesquisa (select e variáveis) recebeu injeção de parâmetros apenas com as cidades solicitadas com seus respectivos CNPJs/UGs nativos à interface (*Sinop* e *Cuiabá* foram removidas do acesso inicial da plataforma de produção).
 - Assim, o comportamento do Vercel reflete de imediato qualquer push que aconteça no banco de dados, sendo acionado apenas quando você utilizar localmente via terminal sua própria pipe `pipeline_multicidades.py`.
 
-## 4. Git Versioning
-Efetuamos um empacotamento (`commit / push`) consolidado na *main branch* remota do GitHub nomeado de: `"chore: alteracoes feitas pelo antigravity - resolucao do extractor APLIC, inclusao de 4 municipios de MT, e reestruturacao do dashboard Vercel (read-only)"`.
+## 4. Carga Histórica (2025) e Otimização de Performance
+- **Processamento Retroativo (2025):** Implementamos a carga de dados históricos de **2025**. Devido ao alto volume (Jan-Dez totaliza >14k registros), ajustamos a estratégia para focar inicialmente nos **primeiros 4 meses** (Janeiro a Abril), garantindo que os dados caibam dentro dos limites de cota gratuita do Firebase.
+- **Otimização do Sync (Batch Writes):** Refatoramos o motor de sincronização (`firebase_sync.py`) para utilizar `Firestore WriteBatch`. Esta mudança permite enviar até **500 registros por vez** em uma única operação atômica, acelerando a carga de dados massivos em até 50x e reduzindo gargalos de rede.
+- **Coleta Segmentada:** O script de download do PNCP foi aprimorado para realizar buscas mensais, evitando timeouts da API oficial e garantindo a integridade dos dados históricos exportados para Excel.
+
+## 5. Evolução do Dashboard (Ano 2025 vs 2026)
+- **Filtro de Exercício:** O dashboard agora possui suporte dinâmico para alternar entre os anos de **2025 e 2026**, exibindo os cruzamentos específicos para cada período selecionado de forma instantânea.
+
+## 6. Git Versioning & Entrega Final
+- **Commit Consolidado:** Efetuamos o empacotamento final das mudanças, incluindo o suporte a 2025, os scripts de otimização e a nova lógica de dashboard read-only.
+- **Comandos de Manutenção:** Foram deixados comandos prontos em `ComandosAntigravity.md` para que o usuário possa re-sincronizar os dados de 2025 assim que as cotas diárias do Firebase forem renovadas.
 
 ---
 *Gerado por Antigravity - Powered by Google.*

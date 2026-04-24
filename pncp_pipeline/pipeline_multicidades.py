@@ -353,7 +353,16 @@ def run(
             stats = etapa_firebase(crossmatch_xlsx, municipio=cidade)
             resultados.append({"municipio": slug, **stats})
         else:
-            logger.info(f"--skip-firebase: sync pulado para {slug}")
+            # Coleta estatísticas básicas do Excel para o resumo mesmo sem sync
+            df_res = pd.read_excel(crossmatch_xlsx, sheet_name="Resultados", dtype=str)
+            movidos = len(df_res[df_res["status_cruzamento"].isin(["MATCH_CONFIRMADO", "MATCH_PARCIAL"])])
+            apenas_aplic = len(df_res[df_res["status_cruzamento"] == "APENAS_APLIC"])
+            resultados.append({
+                "municipio": slug,
+                "movidos_para_ambos": movidos,
+                "inseridos_apenas_aplic": apenas_aplic
+            })
+            logger.info(f"--skip-firebase: sync pulado para {slug} (stats coletadas do Excel)")
 
     # ── Resumo final ──────────────────────────────────────────────────────────
     print("\n" + "=" * 60)
