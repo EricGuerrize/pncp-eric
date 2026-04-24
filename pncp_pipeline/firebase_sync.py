@@ -178,14 +178,14 @@ def _doc_aplic(row: pd.Series, municipio_slug: str) -> dict:
 
     return {
         "municipio":    municipio_slug,
-        "orgao":        str(row.get("_orgao_nome") or row.get("Órgão") or "")[:80],
-        "modalidade":   str(row.get("_modalidade_pncp") or row.get("Modalidade") or "")[:60],
-        "numero":       str(row.get("_numero_aplic") or row.get("Número") or ""),
-        "ano":          str(row.get("_ano_aplic") or row.get("Ano") or ""),
+        "orgao":        str(row.get("_orgao_nome") or row.get("UG") or "")[:80],
+        "modalidade":   str(row.get("Modalidade") or "")[:60],
+        "numero":       str(row.get("_numero_puro") or row.get("Nº Licitação") or ""),
+        "ano":          str(row.get("_ano_extraido") or row.get("Exercício") or ""),
         "objeto":       str(row.get("_objetivo_norm") or row.get("Objetivo") or row.get("Motivo") or "")[:300],
         "valor":        _fval(row.get("Valor Estimado")),
         "cnpj":         str(row.get("_cnpj_mapeado") or ""),
-        "dataAPLIC":    _dt(row.get("dataAberturaAplic") or row.get("dataAbertura") or ""),
+        "dataAPLIC":    _dt(row.get("Data Abertura") or ""),
         "statusPNCP":   "N",
         "statusAPLIC":  "S",
         "atualizadoEm": SERVER_TIMESTAMP,
@@ -352,8 +352,8 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
 
         elif status == "APENAS_APLIC":
             cnpj   = str(row.get("_cnpj_mapeado") or "").replace("/", "_")
-            numero = str(row.get("_numero_aplic") or "").replace("/", "_")
-            ano    = str(row.get("_ano_aplic") or "")
+            numero = str(row.get("_numero_puro") or row.get("Nº Licitação") or "").replace("/", "_")
+            ano    = str(row.get("_ano_extraido") or row.get("Exercício") or "")
             doc_id = f"{cnpj}-{numero}-{ano}" if cnpj else ""
             if not doc_id:
                 continue

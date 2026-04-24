@@ -379,39 +379,39 @@
 
 <!-- ── Cards ───────────────────────────────────────────────────────────── -->
 <div class="cards">
-  <div class="card verde">
+  <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
     <div class="num" id="cnt-ambos">—</div>
-    <div class="label">Em Ambos</div>
-    <div class="desc">PNCP + APLIC ✓</div>
+    <div class="label">Publicadas nos Dois Sistemas</div>
+    <div class="desc">Registradas no PNCP e no APLIC</div>
   </div>
-  <div class="card amarelo">
+  <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
     <div class="num" id="cnt-pncp">—</div>
-    <div class="label">Apenas PNCP</div>
-    <div class="desc">Aguardando APLIC</div>
+    <div class="label">Só no PNCP</div>
+    <div class="desc">Aguardando registro no APLIC (TCE-MT)</div>
   </div>
-  <div class="card laranja">
+  <div class="card laranja" title="Licitações registradas no APLIC (TCE-MT) mas não publicadas no portal federal PNCP">
     <div class="num" id="cnt-aplic">—</div>
-    <div class="label">Apenas APLIC</div>
-    <div class="desc">Sem publicação no PNCP</div>
+    <div class="label">Só no APLIC</div>
+    <div class="desc">Sem publicação no portal federal (PNCP)</div>
   </div>
-  <div class="card vermelho">
+  <div class="card vermelho" title="Publicadas no PNCP há mais de 3 dias úteis sem aparecerem no APLIC — prazo legal vencido">
     <div class="num" id="cnt-alertas">—</div>
-    <div class="label">Alertas</div>
-    <div class="desc">+3 dias úteis sem registro no APLIC</div>
+    <div class="label">Prazo Vencido</div>
+    <div class="desc">+3 dias úteis no PNCP sem registro no APLIC</div>
   </div>
 </div>
 
 <!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
 <div class="tabs-wrap">
   <nav class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('ambos', this)">
-      Em Ambos <span class="badge" id="badge-ambos">—</span>
+    <button class="tab-btn active" onclick="switchTab('ambos', this)" title="Licitações confirmadas nos dois sistemas pelo crossmatch">
+      Nos dois sistemas <span class="badge" id="badge-ambos">—</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)">
-      Apenas PNCP <span class="badge" id="badge-pncp">—</span>
+    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)" title="Publicadas no PNCP mas sem registro no APLIC">
+      Só no PNCP <span class="badge" id="badge-pncp">—</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)">
-      Apenas APLIC <span class="badge" id="badge-aplic">—</span>
+    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)" title="Registradas no APLIC mas não publicadas no PNCP">
+      Só no APLIC <span class="badge" id="badge-aplic">—</span>
     </button>
   </nav>
   <div class="tab-content">
