@@ -158,18 +158,21 @@ def _doc_pncp(row: pd.Series, municipio_slug: str) -> dict:
     valor = _fval(row.get("valorTotalEstimado") or row.get("valorTotalHomologado"))
 
     return {
-        "municipio":    municipio_slug,
-        "orgao":        str(row.get("unidadeOrgao_nomeUnidade") or "")[:80],
-        "modalidade":   str(row.get("modalidadeNome") or "")[:60],
-        "numero":       str(row.get("numeroCompra") or ""),
-        "ano":          str(row.get("anoCompra") or ""),
-        "objeto":       str(row.get("objetoCompra") or "")[:300],
-        "valor":        valor,
-        "cnpj":         re.sub(r"\D", "", str(row.get("orgaoEntidade_cnpj") or "")),
-        "dataPNCP":     data_pncp,
-        "prazoAplic":   prazo_aplic,
-        "statusPNCP":   "S",
-        "atualizadoEm": SERVER_TIMESTAMP,
+        "municipio":          municipio_slug,
+        "numeroControlePNCP": str(row.get("numeroControlePNCP") or ""),
+        "orgao":              str(row.get("unidadeOrgao_nomeUnidade") or "")[:80],
+        "modalidade":         str(row.get("modalidadeNome") or "")[:60],
+        "modalidadeId":       str(row.get("modalidadeId") or ""),
+        "numero":             str(row.get("numeroCompra") or ""),
+        "ano":                str(row.get("anoCompra") or ""),
+        "objeto":             str(row.get("objetoCompra") or "")[:300],
+        "valor":              valor,
+        "cnpj":               re.sub(r"\D", "", str(row.get("orgaoEntidade_cnpj") or "")),
+        "municipioNome":      str(row.get("unidadeOrgao_municipioNome") or ""),
+        "dataPNCP":           data_pncp,
+        "prazoAplic":         prazo_aplic,
+        "statusPNCP":         "S",
+        "atualizadoEm":       SERVER_TIMESTAMP,
     }
 
 
@@ -178,14 +181,14 @@ def _doc_aplic(row: pd.Series, municipio_slug: str) -> dict:
 
     return {
         "municipio":    municipio_slug,
-        "orgao":        str(row.get("_orgao_nome") or row.get("Órgão") or "")[:80],
-        "modalidade":   str(row.get("_modalidade_pncp") or row.get("Modalidade") or "")[:60],
-        "numero":       str(row.get("_numero_aplic") or row.get("Número") or ""),
-        "ano":          str(row.get("_ano_aplic") or row.get("Ano") or ""),
+        "orgao":        str(row.get("_orgao_nome") or row.get("UG") or "")[:80],
+        "modalidade":   str(row.get("Modalidade") or "")[:60],
+        "numero":       str(row.get("_numero_puro") or row.get("Nº Licitação") or ""),
+        "ano":          str(row.get("_ano_extraido") or row.get("Exercício") or ""),
         "objeto":       str(row.get("_objetivo_norm") or row.get("Objetivo") or row.get("Motivo") or "")[:300],
         "valor":        _fval(row.get("Valor Estimado")),
         "cnpj":         str(row.get("_cnpj_mapeado") or ""),
-        "dataAPLIC":    _dt(row.get("dataAberturaAplic") or row.get("dataAbertura") or ""),
+        "dataAPLIC":    _dt(row.get("Data Abertura") or ""),
         "statusPNCP":   "N",
         "statusAPLIC":  "S",
         "atualizadoEm": SERVER_TIMESTAMP,
@@ -355,8 +358,8 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
 
         elif status == "APENAS_APLIC":
             cnpj   = str(row.get("_cnpj_mapeado") or "").replace("/", "_")
-            numero = str(row.get("_numero_aplic") or "").replace("/", "_")
-            ano    = str(row.get("_ano_aplic") or "")
+            numero = str(row.get("_numero_puro") or row.get("Nº Licitação") or "").replace("/", "_")
+            ano    = str(row.get("_ano_extraido") or row.get("Exercício") or "")
             doc_id = f"{cnpj}-{numero}-{ano}" if cnpj else ""
             if not doc_id:
                 continue
@@ -375,6 +378,57 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
         f"Movidos para ambos: {movidos} | Inseridos apenas_aplic: {inseridos_aplic}"
     )
     return {"movidos_para_ambos": movidos, "inseridos_apenas_aplic": inseridos_aplic}
+
+
+# ---------------------------------------------------------------------------
+# Carrega PNCP do Firestore → DataFrame compatível com crossmatch.py
+# ---------------------------------------------------------------------------
+
+def carregar_pncp_municipio(municipio_slug: str) -> pd.DataFrame:
+    """
+    Lê os registros PNCP de um município diretamente do Firestore
+    (subcoleções apenas_pncp + ambos) e retorna um DataFrame com as
+    colunas esperadas por crossmatch.preparar_pncp().
+
+    Não depende de arquivo Excel — toda a informação já está no Firebase.
+    """
+    db = _inicializar_firebase()
+
+    def _parse_ts(val):
+        """Converte Firestore Timestamp ou datetime para datetime sem tz."""
+        if val is None:
+            return None
+        if hasattr(val, "toDate"):          # Firestore Timestamp
+            val = val.toDate()
+        if hasattr(val, "tzinfo") and val.tzinfo:
+            val = val.replace(tzinfo=None)
+        return val
+
+    def _doc_to_row(doc_id: str, data: dict) -> dict:
+        # numeroControlePNCP: guardado como campo (novo) ou reconstruído do ID
+        num_ctrl = data.get("numeroControlePNCP") or doc_id.replace("_", "/")
+        return {
+            "numeroControlePNCP":          num_ctrl,
+            "orgaoEntidade_cnpj":          data.get("cnpj", ""),
+            "objetoCompra":                data.get("objeto", ""),
+            "valorTotalEstimado":          data.get("valor") or 0.0,
+            "dataPublicacaoPncp":          _parse_ts(data.get("dataPNCP")),
+            "anoCompra":                   data.get("ano", ""),
+            "numeroCompra":                data.get("numero", ""),
+            "modalidadeNome":              data.get("modalidade", ""),
+            "modalidadeId":                data.get("modalidadeId", ""),
+            "unidadeOrgao_nomeUnidade":    data.get("orgao", ""),
+            "unidadeOrgao_municipioNome":  data.get("municipioNome", ""),
+        }
+
+    rows = []
+    for colecao in (SUB_APENAS_PNCP, SUB_AMBOS):
+        for doc in _sub(db, municipio_slug, colecao).stream():
+            rows.append(_doc_to_row(doc.id, doc.to_dict()))
+
+    df = pd.DataFrame(rows) if rows else pd.DataFrame()
+    logger.info(f"[Firebase→PNCP] {municipio_slug}: {len(df)} registros carregados")
+    return df
 
 
 # ---------------------------------------------------------------------------

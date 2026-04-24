@@ -359,10 +359,11 @@
 <div class="toolbar">
   <label for="filtro-municipio">Município:</label>
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
-    <option value="rondolandia">Rondolândia</option>
+    <option value="sinop">Sinop</option>
     <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
-    <option value="acorizal">Acorizal</option>
     <option value="jangada">Jangada</option>
+    <option value="rondolandia">Rondolândia</option>
+    <option value="acorizal">Acorizal</option>
   </select>
   <label for="filtro-ano">Ano:</label>
   <select id="filtro-ano" onchange="onAnoChange(this.value)">
@@ -378,39 +379,39 @@
 
 <!-- ── Cards ───────────────────────────────────────────────────────────── -->
 <div class="cards">
-  <div class="card verde">
+  <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
     <div class="num" id="cnt-ambos">—</div>
-    <div class="label">Em Ambos</div>
-    <div class="desc">PNCP + APLIC ✓</div>
+    <div class="label">Publicadas nos Dois Sistemas</div>
+    <div class="desc">Registradas no PNCP e no APLIC</div>
   </div>
-  <div class="card amarelo">
+  <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
     <div class="num" id="cnt-pncp">—</div>
-    <div class="label">Apenas PNCP</div>
-    <div class="desc">Aguardando APLIC</div>
+    <div class="label">Só no PNCP</div>
+    <div class="desc">Aguardando registro no APLIC (TCE-MT)</div>
   </div>
-  <div class="card laranja">
+  <div class="card laranja" title="Licitações registradas no APLIC (TCE-MT) mas não publicadas no portal federal PNCP">
     <div class="num" id="cnt-aplic">—</div>
-    <div class="label">Apenas APLIC</div>
-    <div class="desc">Sem publicação no PNCP</div>
+    <div class="label">Só no APLIC</div>
+    <div class="desc">Sem publicação no portal federal (PNCP)</div>
   </div>
-  <div class="card vermelho">
+  <div class="card vermelho" title="Publicadas no PNCP há mais de 3 dias úteis sem aparecerem no APLIC — prazo legal vencido">
     <div class="num" id="cnt-alertas">—</div>
-    <div class="label">Alertas</div>
-    <div class="desc">Prazo APLIC vencido</div>
+    <div class="label">Prazo Vencido</div>
+    <div class="desc">+3 dias úteis no PNCP sem registro no APLIC</div>
   </div>
 </div>
 
 <!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
 <div class="tabs-wrap">
   <nav class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('ambos', this)">
-      Em Ambos <span class="badge" id="badge-ambos">—</span>
+    <button class="tab-btn active" onclick="switchTab('ambos', this)" title="Licitações confirmadas nos dois sistemas pelo crossmatch">
+      Nos dois sistemas <span class="badge" id="badge-ambos">—</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)">
-      Apenas PNCP <span class="badge" id="badge-pncp">—</span>
+    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)" title="Publicadas no PNCP mas sem registro no APLIC">
+      Só no PNCP <span class="badge" id="badge-pncp">—</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)">
-      Apenas APLIC <span class="badge" id="badge-aplic">—</span>
+    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)" title="Registradas no APLIC mas não publicadas no PNCP">
+      Só no APLIC <span class="badge" id="badge-aplic">—</span>
     </button>
   </nav>
   <div class="tab-content">
@@ -458,6 +459,12 @@ const MODAL_APLIC_PNCP = {
 };
 
 const MUNICIPIOS = {
+  sinop: {
+    nome: 'Sinop', uf: 'MT',
+    orgaos: [
+      { cnpj:'15024003000132', nome:'Prefeitura Municipal de Sinop', ugs:['1112309'] },
+    ]
+  },
   lucas_do_rio_verde: {
     nome: 'Lucas do Rio Verde', uf: 'MT',
     orgaos: [
@@ -505,7 +512,10 @@ const firebaseConfig = {
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-let currentMunKey = 'rondolandia';
+// Municípios do MVP — único filtro do dropdown
+const MUNICIPIOS_MVP = new Set(['sinop','lucas_do_rio_verde','jangada','rondolandia','acorizal']);
+
+let currentMunKey = 'sinop';
 let pncpBuffer   = [];   // registros da API PNCP
 let aplicsBuffer = [];   // registros do CSV APLIC
 let crossResult  = null; // { ambos:[], apenas_pncp:[], apenas_aplic:[] }
@@ -1241,7 +1251,7 @@ function renderApenasPncp(docs) {
       <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
       <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
       <td style="white-space:nowrap">${fmtDate(d.prazoAplic)}</td>
-      <td>${d.alertaAtivo ? '<span class="badge-alerta">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
+      <td>${d.alertaAtivo ? '<span class="badge-alerta" title="Publicado no PNCP há mais de 3 dias úteis e ainda sem registro no APLIC">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
     </tr>`).join('');
   return `<table>
     <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
@@ -1325,23 +1335,25 @@ async function loadMunicipios() {
     const snap = await db.collection('municipios').orderBy('nome').get();
     if (snap.empty) return;
     const sel = document.getElementById('filtro-municipio');
-    const slugsDisponiveis = snap.docs.map(d => d.id);
 
-    // Se o município atual não existe no Firebase, usa o primeiro disponível
+    // Filtra apenas cidades do MVP
+    const mvpDocs = snap.docs.filter(d => MUNICIPIOS_MVP.has(d.id));
+    if (!mvpDocs.length) return;
+
+    const slugsDisponiveis = mvpDocs.map(d => d.id);
     if (!slugsDisponiveis.includes(currentMunKey)) {
       currentMunKey = slugsDisponiveis[0];
     }
 
-    sel.innerHTML = snap.docs
+    sel.innerHTML = mvpDocs
       .map(d => {
         const slug = d.id;
-        const nome = d.data().nome ? d.data().nome : slugToNome(slug);
+        const nome = d.data().nome || slugToNome(slug);
         return `<option value="${slug}"${slug === currentMunKey ? ' selected' : ''}>${nome}</option>`;
       })
       .join('');
 
-    // Atualiza header com nome do município selecionado
-    const nomeSelecionado = snap.docs.find(d => d.id === currentMunKey)?.data().nome
+    const nomeSelecionado = mvpDocs.find(d => d.id === currentMunKey)?.data().nome
       || slugToNome(currentMunKey);
     document.getElementById('header-sub').textContent = `${nomeSelecionado} — MT · 2026`;
   } catch(e) {
