@@ -169,14 +169,28 @@ def salvar_crossmatch(df: pd.DataFrame, municipio: str):
     # Mapeamento do resultado do Crossmatch
     df_db["id_pncp"] = df["numeroControlePNCP"].astype(str).str.replace("/", "_")
     
-    # id_aplic: reconstruir o ID conforme salvar_aplic
-    cnpj = df["_cnpj_mapeado"].astype(str) if "_cnpj_mapeado" in df.columns else pd.Series([""] * len(df))
-    cnpj = cnpj.str.replace(r"\D", "", regex=True)
+    # id_aplic: reconstruir o ID de forma robusta
+    def _get_col_safe(search_terms, exact_terms=None):
+        # 1. Tenta termos exatos primeiro
+        if exact_terms:
+            for col in df.columns:
+                if col in exact_terms:
+                    return df[col]
+        # 2. Tenta busca por substring
+        for col in df.columns:
+            for term in search_terms:
+                if term.lower() in col.lower():
+                    return df[col]
+        return pd.Series([""] * len(df))
+
+    ug = _get_col_safe(["ug_code", "cód. ug", "ug"], exact_terms=["Cód. UG", "ug_code"])
+    numero = _get_col_safe(["licit", "nº", "n "], exact_terms=["_numero_puro", "Nº Licitação"])
+    ano = _get_col_safe(["exer", "ano"], exact_terms=["_ano_extraido", "Exercício"])
     
-    numero = df["_numero_puro"].astype(str) if "_numero_puro" in df.columns else pd.Series([""] * len(df))
-    ano = df["_ano_extraido"].astype(str) if "_ano_extraido" in df.columns else pd.Series([""] * len(df))
+    # Usamos UG + Numero + Ano para garantir unicidade, especialmente no Estado
+    df_db["id_aplic"] = ug.fillna("").astype(str) + "-" + numero.fillna("").astype(str) + "-" + ano.fillna("").astype(str)
     
-    df_db["id_aplic"] = cnpj + "-" + numero + "-" + ano
+    logger.info(f"IDs Gerados: {df_db['id_aplic'].unique().size} únicos de {len(df_db)}")
 
     df_db["municipio"] = municipio
     df_db["status_cruzamento"] = df.get("status_cruzamento", "SEM_MATCH")
