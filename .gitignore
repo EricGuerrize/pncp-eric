@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.xlsx
+*.csv
+*.log
+pncp_pipeline/output/
+pncp_pipeline/logs/
+.env
+firebase_credentials.json
+*_credentials.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+
+venv/
+.claude/

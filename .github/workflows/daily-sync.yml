@@ -1,0 +1,33 @@
+name: Daily PNCP Sync
+on:
+  # schedule:
+  #   # Runs at 02:00 UTC (around 22:00 BRT)
+  #   - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync_to_firebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Inject Firebase Credentials
+        env:
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
+        run: |
+          echo "$FIREBASE_CREDENTIALS" > firebase_credentials.json
+
+      - name: Run Pipeline
+        run: |
+          cd pncp_pipeline
+          python main.py

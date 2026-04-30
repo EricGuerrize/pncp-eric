@@ -1,0 +1,1169 @@
+"""
+crossmatch.py — Cruzamento PNCP × APLIC (TCE-MT)
+
+Cascata de matching (ordem de prioridade):
+  Tier 1 — Semântico + Financeiro: fuzzy objeto/objetivo (≥85) + valor delta ≤10%
+  Tier 2 — CNPJ + Data: CNPJ exato + abertura vs publicação ≤30 dias
+  Tier 3 — Estrutural (fallback): município + número + ano + modalidade
+
+Score composto pós-match:
+  50% fuzzy texto + 30% delta valor + 20% delta data
+  ≥85 → MATCH_CONFIRMADO | ≥70 → MATCH_PARCIAL | <70 → SEM_MATCH (rebaixado)
+
+Uso standalone:
+    python crossmatch.py pncp_contratacoes_MT_*.xlsx licitacao_lrv_2026.csv
+"""
+
+from __future__ import annotations
+import re
+import sys
+import csv
+import logging
+import unicodedata
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constantes
+# ---------------------------------------------------------------------------
+
+import json
+
+# DE-PARA: (cod_ug, municipio_normalizado) → {cnpj: str, nome: str}
+DE_PARA_UG_INFO: dict[tuple[str, str], dict] = {}
+
+def load_orgaos():
+    json_path = Path(__file__).resolve().parent / "input" / "orgaos.json"
+    if json_path.exists():
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for item in data:
+                DE_PARA_UG_INFO[(item["ug"], item["municipio"])] = {
+                    "cnpj": item["cnpj"],
+                    "nome": item["nome"]
+                }
+
+load_orgaos()
+
+
+# Modalidade APLIC (código string) → modalidadeId PNCP (int)
+MAPA_MODALIDADE_APLIC_PARA_PNCP: dict[str, int] = {
+    "08": 8,   # Dispensa de Licitação
+    "09": 9,   # Inexigibilidade
+    "13": 6,   # Pregão Eletrônico
+    "15": 12,  # Credenciamento
+    "56": 5,   # Concorrência Presencial
+    "01": 4,   # Concorrência Eletrônica
+    "02": 2,   # Diálogo Competitivo
+    "03": 3,   # Concurso
+    "04": 1,   # Leilão Eletrônico
+    "05": 7,   # Pregão Presencial
+    "06": 10,  # Manifestação de Interesse
+    "07": 11,  # Pré-qualificação
+    "14": 13,  # Leilão Presencial
+}
+
+LIMIAR_MATCH_CONFIRMADO = 85
+LIMIAR_MATCH_PARCIAL    = 70
+
+# Tier 1: semântico + financeiro
+LIMIAR_FUZZY_T1 = 85    # token_sort_ratio mínimo
+LIMIAR_VALOR_T1 = 10.0  # delta valor % máximo
+
+# Tier 2: CNPJ + data
+LIMIAR_DIAS_T2 = 30     # diferença máxima em dias
+
+
+# ---------------------------------------------------------------------------
+# Funções utilitárias
+# ---------------------------------------------------------------------------
+
+def extrair_numero_puro(texto: str) -> tuple[int | None, int | None]:
+    """
+    Extrai número base e ano de qualquer formato de número de licitação.
+
+    Exemplos:
+        "00000000001/2026"  → (1, 2026)
+        "PE 8"              → (8, None)
+        "021"               → (21, None)
+        "011/2025/PMC"      → (11, 2025)
+        "DL 2"              → (2, None)
+    """
+    if not isinstance(texto, str) or not texto.strip():
+        return None, None
+
+    texto = texto.strip()
+
+    # Tenta padrão: número/ano (captura o primeiro par número/ano)
+    m = re.search(r'(\d+)\s*/\s*(20\d{2}|\d{2})', texto)
+    if m:
+        numero = int(m.group(1))
+        ano_raw = m.group(2)
+        ano = int(ano_raw) if len(ano_raw) == 4 else 2000 + int(ano_raw)
+        return numero, ano
+
+    # Tenta extrair apenas número inteiro (ignora prefixos alfanuméricos)
+    m = re.search(r'(\d+)', texto)
+    if m:
+        return int(m.group(1)), None
+
+    return None, None
+
+
+def normalizar_texto(texto: str) -> str:
+    """
+    Normaliza texto: lowercase + remove acentos + expurga stopwords licitatórias.
+    """
+    if not isinstance(texto, str):
+        return ""
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = texto.lower()
+    
+    stopwords = [
+        r"registro de precos para( a| o)?( contratacao de empresa especializada (para|no|na)| fornecimento de| eventual e futura contratacao de empresa especializada na prestacao de servicos continuados de| futura e eventual aquisicao de)?",
+        r"registro de precos( para)?",
+        r"aquisicao de( agregados para a construcao civil substancia mineral de rocha britada em diversos tipos e granulometrias para utilizacao em manutencoes e reparos em vias urbanas e rurais pavimentacao drenagem e obras de arte bem como para execucao de| materiais e insumos para( equipar as)?| kits de teste de)?",
+        r"contratacao( de empresa( especializada( na prestacao de| para( o fornecimento de equipamentos para)?| em servicos de)?| por notoria especializacao para a)?| artistica mediante inexigibilidade para realizacao de)?",
+        r"prestacao de servicos?",
+        r"fornecimento( e instalacao)? de",
+        r"futura e eventual",
+        r"eventual e futura",
+        r"credenciamento( destinado a empresas que tenham interesse na prestacao de servicos especializados na realizacao de| de pessoas juridicas para a prestacao de servicos medicos destinados ao atendimento na| de empresa especializada em prestacao de)?",
+    ]
+    padrao = r"\b(" + "|".join(stopwords) + r")\b"
+    texto = re.sub(padrao, " ", texto)
+    
+    return re.sub(r'\s+', ' ', texto).strip()
+
+
+def converter_valor_br(texto) -> float | None:
+    """
+    Converte valor monetário brasileiro para float.
+
+    Exemplos:
+        "1.234,56" → 1234.56
+        "1234.56"  → 1234.56
+        1234       → 1234.0
+        ""         → None
+    """
+    if texto is None:
+        return None
+    if isinstance(texto, (int, float)):
+        return float(texto)
+    texto = str(texto).strip()
+    if not texto:
+        return None
+
+    # Formato BR: "1.234,56"
+    if re.match(r'^\d{1,3}(\.\d{3})*(,\d+)?$', texto):
+        texto = texto.replace('.', '').replace(',', '.')
+        try:
+            return float(texto)
+        except ValueError:
+            pass
+
+    # Formato anglo-saxão ou inteiro puro
+    texto_limpo = re.sub(r'[^\d.]', '', texto)
+    try:
+        return float(texto_limpo)
+    except ValueError:
+        return None
+
+
+def mapear_ug(cod_ug, municipio: str) -> dict | None:
+    """Lookup no DE-PARA via (cod_ug, municipio_normalizado)."""
+    if not cod_ug or str(cod_ug).strip() == '':
+        return None
+    chave = (str(cod_ug).strip(), normalizar_texto(municipio))
+    return DE_PARA_UG_INFO.get(chave)
+
+
+def mapear_modalidade_aplic_para_pncp(cod_mod: str) -> int | None:
+    """Lookup no mapa de modalidades APLIC → PNCP."""
+    if not cod_mod:
+        return None
+    return MAPA_MODALIDADE_APLIC_PARA_PNCP.get(str(cod_mod).strip().zfill(2))
+
+
+# ---------------------------------------------------------------------------
+# Preparação dos DataFrames
+# ---------------------------------------------------------------------------
+
+def preparar_pncp(df_pncp: pd.DataFrame) -> pd.DataFrame:
+    """Prepara o DataFrame PNCP para o cruzamento."""
+    df = df_pncp.copy()
+
+    # Extrai número puro e ano do numeroCompra
+    parsed = df['numeroCompra'].astype(str).apply(extrair_numero_puro)
+    df['_numero_puro'] = parsed.apply(lambda x: x[0])
+    df['_ano_extraido'] = parsed.apply(lambda x: x[1])
+
+    # Fallback: usa anoCompra quando ano não está no numeroCompra
+    if 'anoCompra' in df.columns:
+        mask_sem_ano = df['_ano_extraido'].isna()
+        df.loc[mask_sem_ano, '_ano_extraido'] = pd.to_numeric(
+            df.loc[mask_sem_ano, 'anoCompra'], errors='coerce'
+        )
+
+    # Normaliza município e objeto
+    df['_municipio_norm'] = df['unidadeOrgao_municipioNome'].apply(normalizar_texto)
+    df['_objeto_norm'] = df['objetoCompra'].apply(normalizar_texto)
+
+    # Garante valores financeiros como float
+    for col in ['valorTotalEstimado', 'valorTotalHomologado']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+    # dataPublicacaoPncp → datetime
+    if 'dataPublicacaoPncp' in df.columns:
+        df['dataPublicacaoPncp'] = pd.to_datetime(df['dataPublicacaoPncp'], errors='coerce')
+
+    # Remove formatação de CNPJ
+    if 'orgaoEntidade_cnpj' in df.columns:
+        df['orgaoEntidade_cnpj'] = df['orgaoEntidade_cnpj'].astype(str).apply(
+            lambda x: re.sub(r'\D', '', x)
+        )
+
+    # modalidadeId como float64 para joins sem problemas de tipo
+    if 'modalidadeId' in df.columns:
+        df['modalidadeId'] = pd.to_numeric(df['modalidadeId'], errors='coerce').astype('float64')
+
+    return df
+
+
+def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
+    """Prepara o DataFrame APLIC para o cruzamento."""
+    df = df_aplic.copy()
+
+    # Forward-fill do Cód. UG (aparece apenas na primeira linha de cada grupo)
+    col_ug = next((c for c in df.columns if 'ug' in c.lower() and ('cód' in c.lower() or 'cod' in c.lower())), None)
+    if col_ug:
+        df[col_ug] = df[col_ug].replace('', pd.NA).ffill()
+
+    # Coluna de número da licitação
+    col_numero = next(
+        (c for c in df.columns if 'licitaç' in c.lower() or 'licitac' in c.lower() or 'nº' in c.lower()),
+        None
+    )
+    if col_numero is None:
+        col_numero = df.columns[0]
+        logger.warning(f"Coluna de número não encontrada; usando '{col_numero}'")
+
+    parsed = df[col_numero].astype(str).apply(extrair_numero_puro)
+    df['_numero_puro'] = parsed.apply(lambda x: x[0])
+    df['_ano_extraido'] = parsed.apply(lambda x: x[1])
+
+    # Fallback: usa coluna Exercício
+    col_exercicio = next((c for c in df.columns if 'exerc' in c.lower()), None)
+    if col_exercicio:
+        mask_sem_ano = df['_ano_extraido'].isna()
+        df.loc[mask_sem_ano, '_ano_extraido'] = pd.to_numeric(
+            df.loc[mask_sem_ano, col_exercicio], errors='coerce'
+        )
+
+    # Mapeia UG → CNPJ
+    # Prefere coluna "Município" pura, evita "Cód. município"
+    col_municipio = next(
+        (c for c in df.columns if c.strip().lower() == 'município'), None
+    ) or next(
+        (c for c in df.columns if 'munic' in c.lower() and 'cód' not in c.lower() and 'cod' not in c.lower()),
+        None
+    )
+    if col_ug and col_municipio:
+        # Mapeamento do órgão (CNPJ e Nome Amigável)
+        df['_info_mapeada'] = df.apply(
+            lambda r: mapear_ug(r[col_ug], r[col_municipio]), axis=1
+        )
+        df['_cnpj_mapeado'] = df['_info_mapeada'].apply(lambda x: x['cnpj'] if x else None)
+        df['_orgao_nome']   = df['_info_mapeada'].apply(lambda x: x['nome'] if x else None)
+        df = df.drop(columns=['_info_mapeada'])
+    else:
+        df['_cnpj_mapeado'] = None
+        df['_orgao_nome']   = None
+        logger.warning("Colunas Cód. UG ou Município não encontradas no APLIC.")
+
+    # Mapeia modalidade → float64 para join sem problemas de tipo
+    col_modalidade = next((c for c in df.columns if 'modalidade' in c.lower() and 'cod' in c.lower()), None)
+    if col_modalidade:
+        df['_modalidade_pncp_id'] = pd.to_numeric(
+            df[col_modalidade].astype(str).apply(mapear_modalidade_aplic_para_pncp),
+            errors='coerce'
+        ).astype('float64')
+    else:
+        df['_modalidade_pncp_id'] = pd.NA
+        logger.warning("Coluna Cod. Modalidade não encontrada no APLIC.")
+
+    # Normaliza município e objetivo
+    if col_municipio:
+        df['_municipio_norm'] = df[col_municipio].apply(normalizar_texto)
+    else:
+        df['_municipio_norm'] = ""
+        logger.warning("Coluna Município não encontrada no APLIC.")
+
+    col_objetivo = next((c for c in df.columns if 'objetivo' in c.lower() or 'objeto' in c.lower()), None)
+    col_motivo   = next((c for c in df.columns if 'motivo' in c.lower()), None)
+
+    # Objetivo e Motivo são tratados como campos intercambiáveis:
+    # no APLIC não há padronização — o texto descritivo pode estar em qualquer um.
+    # O matching usa o máximo dos dois scores contra o objetoCompra do PNCP.
+    df['_objetivo_norm'] = df[col_objetivo].apply(normalizar_texto) if col_objetivo else ""
+    df['_motivo_norm']   = df[col_motivo].apply(normalizar_texto)   if col_motivo   else ""
+
+    if not col_objetivo:
+        logger.warning("Coluna Objetivo não encontrada no APLIC.")
+    if not col_motivo:
+        logger.warning("Coluna Motivo não encontrada no APLIC.")
+
+    # Valores financeiros
+    col_val_est = next((c for c in df.columns if 'estimado' in c.lower()), None)
+    col_val_venc = next((c for c in df.columns if 'vencedor' in c.lower()), None)
+    df['_valor_estimado_float'] = df[col_val_est].apply(converter_valor_br) if col_val_est else None
+    df['_valor_vencedor_float'] = df[col_val_venc].apply(converter_valor_br) if col_val_venc else None
+
+    # Data Abertura
+    col_data = next((c for c in df.columns if 'abertura' in c.lower()), None)
+    if col_data:
+        df[col_data] = pd.to_datetime(df[col_data], dayfirst=True, errors='coerce')
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Deduplicação
+# ---------------------------------------------------------------------------
+
+def deduplicar_pncp(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deduplica o DataFrame PNCP.
+    Chave: (cnpj, número, ano, modalidade).
+    Prioridade: valorTotalHomologado > 0 primeiro; empate → dataPublicacaoPncp mais recente.
+    """
+    antes = len(df)
+    chave = ['orgaoEntidade_cnpj', '_numero_puro', '_ano_extraido', 'modalidadeId']
+    chave_existente = [c for c in chave if c in df.columns]
+
+    if not chave_existente:
+        return df
+
+    df = df.copy()
+    if 'valorTotalHomologado' in df.columns:
+        df['_tem_homologado'] = (pd.to_numeric(df['valorTotalHomologado'], errors='coerce').fillna(0) > 0).astype(int)
+    else:
+        df['_tem_homologado'] = 0
+    df = df.sort_values(
+        ['_tem_homologado', 'dataPublicacaoPncp'],
+        ascending=[False, False],
+        na_position='last'
+    )
+    df = df.drop_duplicates(subset=chave_existente, keep='first')
+    df = df.drop(columns=['_tem_homologado'])
+
+    removidos = antes - len(df)
+    if removidos:
+        logger.info(f"[PNCP] Deduplicação: {removidos} linhas removidas ({antes} → {len(df)})")
+    return df
+
+
+def deduplicar_aplic(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Deduplica o DataFrame APLIC.
+    Chave: (número, ano, modalidade_pncp).
+    Prioridade: maior valor estimado.
+
+    Retorna (df_dedup, df_grupos) onde df_grupos contém TODOS os registros
+    originais marcados com '_dedup_tipo' (principal / duplicata) e '_dedup_grupo'
+    (int sequencial por grupo duplicado), para visualização lado a lado no Excel.
+    """
+    antes = len(df)
+    # CNPJ obrigatório na chave: UGs distintas (Câmara, Prefeitura, Previsinop)
+    # têm numeração sequencial independente — nº 001/2026 da Câmara ≠ nº 001/2026 da Prefeitura.
+    chave = ['_cnpj_mapeado', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id']
+    chave_existente = [c for c in chave if c in df.columns]
+
+    if not chave_existente:
+        return df, pd.DataFrame()
+
+    df = df.copy()
+    df = df.sort_values('_valor_estimado_float', ascending=False, na_position='last')
+
+    # Identifica grupos duplicados antes de remover
+    df['_dedup_grupo'] = df.groupby(chave_existente, sort=False).ngroup()
+    duplicados_mask = df.duplicated(subset=chave_existente, keep='first')
+    df['_dedup_tipo'] = 'principal'
+    df.loc[duplicados_mask, '_dedup_tipo'] = 'duplicata'
+
+    # Separa apenas grupos que TÊM duplicatas (grupos com >1 membro)
+    grupos_com_dup = df[df['_dedup_grupo'].isin(
+        df[duplicados_mask]['_dedup_grupo'].unique()
+    )].copy().sort_values(['_dedup_grupo', '_dedup_tipo'])
+
+    df_dedup = df[~duplicados_mask].drop(columns=['_dedup_grupo', '_dedup_tipo'])
+
+    removidos = antes - len(df_dedup)
+    if removidos:
+        logger.info(f"[APLIC] Deduplicação: {removidos} linhas removidas ({antes} → {len(df_dedup)})")
+    return df_dedup, grupos_com_dup
+
+
+# ---------------------------------------------------------------------------
+# Lógica de merge em cascata
+# ---------------------------------------------------------------------------
+
+def _merge_primario(
+    df_pncp: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, set]:
+    """
+    Tier 1 — Semântico + Financeiro (mais discriminante).
+    Aceita match se fuzzy objeto/objetivo >= LIMIAR_FUZZY_T1
+    E delta valor <= LIMIAR_VALOR_T1%.
+    Agrupa por (municipio_norm, ano). Atribuição greedy (maior score primeiro).
+
+    Retorna (matched, pncp_orfaos, matched_aplic_indices).
+    """
+    try:
+        from rapidfuzz import process as rfprocess, fuzz as rffuzz
+    except ImportError:
+        logger.warning("rapidfuzz não instalado. Tier 1 (semântico) ignorado.")
+        return pd.DataFrame(), df_pncp.copy(), set()
+
+    matched_rows: list[dict] = []
+    matched_pncp_idx: set = set()
+    matched_aplic_idx: set = set()
+
+    grupos = df_pncp.groupby(['_municipio_norm', '_ano_extraido'], dropna=False)
+
+    for (mun, ano), grupo_pncp in grupos:
+        grupo_aplic = df_aplic[
+            (df_aplic['_municipio_norm'] == mun) &
+            (df_aplic['_ano_extraido'] == ano)
+        ]
+        if grupo_aplic.empty:
+            continue
+
+        objetos   = grupo_pncp['_objeto_norm'].fillna('').tolist()
+        objetivos = grupo_aplic['_objetivo_norm'].fillna('').tolist()
+        motivos   = grupo_aplic['_motivo_norm'].fillna('').tolist() if '_motivo_norm' in grupo_aplic.columns else [''] * len(grupo_aplic)
+
+        # Calcula score contra Objetivo e Motivo separadamente; usa o maior.
+        # Resolve a falta de padronização no APLIC: o texto pode estar em qualquer campo.
+        matrix_obj = rfprocess.cdist(objetos, objetivos, scorer=rffuzz.token_sort_ratio)
+        matrix_mot = rfprocess.cdist(objetos, motivos,   scorer=rffuzz.token_sort_ratio)
+        matrix = np.maximum(matrix_obj, matrix_mot)
+
+        pncp_indices  = list(grupo_pncp.index)
+        aplic_indices = list(grupo_aplic.index)
+
+        # Monta candidatos: (score_texto, pncp_ri, aplic_ri)
+        candidatos: list[tuple] = []
+        for i, pncp_ri in enumerate(pncp_indices):
+            for j, aplic_ri in enumerate(aplic_indices):
+                score_texto = float(matrix[i][j])
+                if score_texto < LIMIAR_FUZZY_T1:
+                    continue
+                # Verifica delta de valor
+                val_p = pd.to_numeric(
+                    df_pncp.loc[pncp_ri, 'valorTotalEstimado'], errors='coerce'
+                ) or 0.0
+                val_a = df_aplic.loc[aplic_ri, '_valor_estimado_float'] or 0.0
+                if val_p > 0 and val_a > 0:
+                    delta_val = abs(val_p - val_a) / max(val_p, val_a) * 100
+                    if delta_val > LIMIAR_VALOR_T1:
+                        continue
+                candidatos.append((score_texto, pncp_ri, aplic_ri))
+
+        # Atribuição greedy: maior score primeiro
+        candidatos.sort(key=lambda x: -x[0])
+        for score_t, pncp_ri, aplic_ri in candidatos:
+            if pncp_ri in matched_pncp_idx or aplic_ri in matched_aplic_idx:
+                continue
+            row = df_pncp.loc[pncp_ri].to_dict()
+            for col in df_aplic.columns:
+                if col not in row:
+                    row[col] = df_aplic.loc[aplic_ri, col]
+            row['_origem_merge']      = 'primario_semantico'
+            row['_fuzzy_score_tier1'] = score_t
+            matched_rows.append(row)
+            matched_pncp_idx.add(pncp_ri)
+            matched_aplic_idx.add(aplic_ri)
+
+    if not matched_rows:
+        logger.info(f"[Tier 1] 0 matches | {len(df_pncp)} órfãos PNCP")
+        return pd.DataFrame(), df_pncp.copy(), set()
+
+    matched     = pd.DataFrame(matched_rows)
+    pncp_orfaos = df_pncp[~df_pncp.index.isin(matched_pncp_idx)].copy()
+    logger.info(f"[Tier 1] {len(matched)} matches | {len(pncp_orfaos)} órfãos PNCP")
+    return matched, pncp_orfaos, matched_aplic_idx
+
+
+def _merge_secundario(
+    df_pncp_orfaos: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+    already_matched_aplic: set,
+) -> tuple[pd.DataFrame, pd.DataFrame, set]:
+    """
+    Tier 2 — CNPJ + Data.
+    Para cada PNCP órfão cujo CNPJ está no DE-PARA, busca o registro APLIC
+    com mesmo CNPJ e menor delta de data (máx. LIMIAR_DIAS_T2 dias).
+
+    Retorna (matched, remanescentes, new_matched_aplic_indices).
+    """
+    if df_pncp_orfaos.empty:
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
+
+    cnpjs_aplic   = set(df_aplic['_cnpj_mapeado'].dropna().unique())
+    pncp_com_cnpj = df_pncp_orfaos[df_pncp_orfaos['orgaoEntidade_cnpj'].isin(cnpjs_aplic)]
+
+    if pncp_com_cnpj.empty:
+        logger.info("[Tier 2] Nenhum CNPJ PNCP presente no DE-PARA.")
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
+
+    col_data_aplic = next((c for c in df_aplic.columns if 'abertura' in c.lower()), None)
+
+    matched_rows: list[dict] = []
+    matched_pncp_idx: set = set()
+    matched_aplic_idx: set = set()
+
+    for pncp_ri, pncp_row in pncp_com_cnpj.iterrows():
+        cnpj = pncp_row['orgaoEntidade_cnpj']
+        candidatos_aplic = df_aplic[
+            (df_aplic['_cnpj_mapeado'] == cnpj) &
+            (~df_aplic.index.isin(already_matched_aplic | matched_aplic_idx))
+        ]
+        if candidatos_aplic.empty:
+            continue
+
+        data_pncp = pd.to_datetime(pncp_row.get('dataPublicacaoPncp'), errors='coerce')
+        if pd.notna(data_pncp) and getattr(data_pncp, 'tzinfo', None):
+            data_pncp = data_pncp.tz_localize(None)
+
+        melhor_delta    = float('inf')
+        melhor_aplic_ri = None
+
+        for aplic_ri, aplic_row in candidatos_aplic.iterrows():
+            if col_data_aplic and pd.notna(data_pncp):
+                data_a = pd.to_datetime(aplic_row.get(col_data_aplic), errors='coerce')
+                if pd.notna(data_a):
+                    delta = abs((data_pncp - data_a).days)
+                    if delta <= LIMIAR_DIAS_T2 and delta < melhor_delta:
+                        melhor_delta    = delta
+                        melhor_aplic_ri = aplic_ri
+            else:
+                # Sem data disponível: aceita qualquer APLIC com mesmo CNPJ
+                melhor_aplic_ri = aplic_ri
+                melhor_delta    = 0
+                break
+
+        if melhor_aplic_ri is not None:
+            row = pncp_row.to_dict()
+            for col in df_aplic.columns:
+                if col not in row:
+                    row[col] = df_aplic.loc[melhor_aplic_ri, col]
+            row['_origem_merge']      = 'secundario_cnpj_data'
+            row['_delta_dias_tier2']  = melhor_delta
+            matched_rows.append(row)
+            matched_pncp_idx.add(pncp_ri)
+            matched_aplic_idx.add(melhor_aplic_ri)
+
+    if not matched_rows:
+        logger.info(f"[Tier 2] 0 matches | {len(df_pncp_orfaos)} remanescentes PNCP")
+        return pd.DataFrame(), df_pncp_orfaos.copy(), set()
+
+    matched      = pd.DataFrame(matched_rows)
+    remanescentes = df_pncp_orfaos[~df_pncp_orfaos.index.isin(matched_pncp_idx)].copy()
+    logger.info(f"[Tier 2] {len(matched)} matches | {len(remanescentes)} remanescentes PNCP")
+    return matched, remanescentes, matched_aplic_idx
+
+
+def _merge_terciario(
+    df_pncp_rem: pd.DataFrame,
+    df_aplic: pd.DataFrame,
+    already_matched_aplic: set,
+) -> tuple[pd.DataFrame, set]:
+    """
+    Tier 3 — Fallback estrutural: município + número + ano + modalidade.
+    Último recurso para registros não resolvidos pelos tiers semântico e de CNPJ.
+
+    Retorna (result_df, new_matched_aplic_indices).
+    """
+    if df_pncp_rem.empty:
+        return pd.DataFrame(), set()
+
+    df_aplic_disp = df_aplic[~df_aplic.index.isin(already_matched_aplic)].copy()
+    df_aplic_disp['_aplic_orig_idx'] = df_aplic_disp.index
+
+    # Garante tipos compatíveis para o merge
+    for col in ['_numero_puro', '_ano_extraido']:
+        df_pncp_rem[col] = pd.to_numeric(df_pncp_rem[col], errors='coerce')
+        df_aplic_disp[col] = pd.to_numeric(df_aplic_disp[col], errors='coerce')
+    
+    df_pncp_rem['modalidadeId'] = pd.to_numeric(df_pncp_rem['modalidadeId'], errors='coerce')
+    df_aplic_disp['_modalidade_pncp_id'] = pd.to_numeric(df_aplic_disp['_modalidade_pncp_id'], errors='coerce')
+
+    merged = df_pncp_rem.merge(
+        df_aplic_disp,
+        left_on=['_municipio_norm', '_numero_puro', '_ano_extraido', 'modalidadeId'],
+        right_on=['_municipio_norm', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id'],
+        how='left',
+        suffixes=('', '_aplic')
+    )
+    merged['_origem_merge'] = merged['_cnpj_mapeado'].apply(
+        lambda x: 'terciario_estrutural' if pd.notna(x) else 'sem_match'
+    )
+
+    new_matched = set(merged['_aplic_orig_idx'].dropna().astype(int))
+    merged = merged.drop(columns=['_aplic_orig_idx'], errors='ignore')
+
+    n_matched = (merged['_origem_merge'] == 'terciario_estrutural').sum()
+    n_sem     = (merged['_origem_merge'] == 'sem_match').sum()
+    logger.info(f"[Tier 3] {n_matched} matches estruturais | {n_sem} sem match")
+    return merged, new_matched
+
+
+# ---------------------------------------------------------------------------
+# Enriquecimento pós-merge
+# ---------------------------------------------------------------------------
+
+def _calcular_fuzzy_score(row: pd.Series) -> float:
+    """
+    Calcula fuzzy score entre objetoCompra (PNCP) e os campos descritivos do APLIC.
+    Retorna o maior entre score(Objetivo) e score(Motivo), pois no APLIC o texto
+    relevante pode estar em qualquer um dos dois campos sem padronização.
+    """
+    try:
+        from rapidfuzz import fuzz as rffuzz
+    except ImportError:
+        return 0.0
+
+    obj = row.get('_objeto_norm', '') or ''
+    if not isinstance(obj, str) or not obj:
+        return 0.0
+
+    objetivo = row.get('_objetivo_norm', '') or ''
+    motivo   = row.get('_motivo_norm',   '') or ''
+
+    score_obj = float(rffuzz.token_sort_ratio(obj, objetivo)) if isinstance(objetivo, str) and objetivo else 0.0
+    score_mot = float(rffuzz.token_sort_ratio(obj, motivo))   if isinstance(motivo,   str) and motivo   else 0.0
+
+    return max(score_obj, score_mot)
+
+
+def _calcular_score_composto(row: pd.Series) -> float:
+    """
+    Score composto pós-match:
+      50% fuzzy texto (objeto PNCP vs objetivo APLIC)
+      30% proximidade de valor (delta_percentual)
+      20% proximidade de data  (delta_dias)
+
+    Componentes ausentes recebem score neutro (50) para não penalizar
+    registros com dados incompletos.
+    """
+    # Texto
+    score_texto = float(row.get('fuzzy_score') or 0)
+
+    # Valor
+    delta_val = row.get('delta_percentual')
+    if delta_val is None or (isinstance(delta_val, float) and pd.isna(delta_val)):
+        score_valor = 50.0
+    elif delta_val <= 10:
+        score_valor = 100.0
+    elif delta_val <= 30:
+        score_valor = 50.0
+    else:
+        score_valor = 0.0
+
+    # Data
+    delta_dias = row.get('delta_dias')
+    if delta_dias is None or (isinstance(delta_dias, float) and pd.isna(delta_dias)):
+        score_data = 50.0
+    elif delta_dias <= 15:
+        score_data = 100.0
+    elif delta_dias <= 30:
+        score_data = 50.0
+    else:
+        score_data = 0.0
+
+    return round(score_texto * 0.5 + score_valor * 0.3 + score_data * 0.2, 2)
+
+
+def calcular_delta_financeiro(df: pd.DataFrame) -> pd.DataFrame:
+    """Calcula delta percentual entre valor estimado PNCP e APLIC."""
+    df = df.copy()
+
+    val_pncp = pd.to_numeric(df.get('valorTotalEstimado', 0), errors='coerce').fillna(0.0)
+
+    if '_valor_estimado_float' not in df.columns:
+        df['delta_percentual'] = None
+        df['validacao_financeira'] = 'SEM_VALOR'
+        return df
+
+    val_aplic = pd.to_numeric(df['_valor_estimado_float'], errors='coerce').fillna(0.0)
+
+    sem_valor = (val_pncp == 0) | (val_aplic == 0)
+    denominador = val_pncp.where(val_pncp > 0, val_aplic).where(lambda x: x > 0, 1.0)
+    delta = ((val_pncp - val_aplic).abs() / denominador * 100).round(2)
+
+    df['delta_percentual'] = delta.where(~sem_valor, None)
+    df['validacao_financeira'] = 'OK'
+    df.loc[sem_valor, 'validacao_financeira'] = 'SEM_VALOR'
+    df.loc[(~sem_valor) & (delta > 10), 'validacao_financeira'] = 'DIVERGENTE'
+
+    return df
+
+
+def calcular_delta_temporal(df: pd.DataFrame) -> pd.DataFrame:
+    """Calcula a diferença em dias entre a publicação PNCP e a Abertura do APLIC."""
+    df = df.copy()
+    col_data_aplic = next((c for c in df.columns if 'abertura' in c.lower()), None)
+    col_data_pncp = 'dataPublicacaoPncp' if 'dataPublicacaoPncp' in df.columns else None
+    
+    if col_data_aplic and col_data_pncp:
+        data_p = pd.to_datetime(df[col_data_pncp], errors='coerce').dt.tz_localize(None)
+        data_a = pd.to_datetime(df[col_data_aplic], errors='coerce').dt.tz_localize(None)
+        df['delta_dias'] = (data_p - data_a).dt.days.abs()
+    else:
+        df['delta_dias'] = None
+    return df
+
+
+def classificar_status(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Classifica status usando score composto (50% texto + 30% valor + 20% data).
+    Matches com score < LIMIAR_MATCH_PARCIAL são rebaixados para SEM_MATCH.
+    """
+    df = df.copy()
+
+    sem_match_mask = df['_origem_merge'] == 'sem_match'
+    df['status_cruzamento'] = 'SEM_MATCH'
+
+    if 'estrategia_match' not in df.columns:
+        df['estrategia_match'] = df['_origem_merge']
+    else:
+        df['estrategia_match'] = df['estrategia_match'].fillna(df['_origem_merge'])
+
+    # Score composto apenas para linhas com match
+    df['score_composto'] = 0.0
+    mask_com_match = ~sem_match_mask
+    if mask_com_match.any():
+        df.loc[mask_com_match, 'score_composto'] = (
+            df[mask_com_match].apply(_calcular_score_composto, axis=1)
+        )
+
+    confirmado = mask_com_match & (df['score_composto'] >= LIMIAR_MATCH_CONFIRMADO)
+    parcial    = mask_com_match & (df['score_composto'] >= LIMIAR_MATCH_PARCIAL) & (~confirmado)
+    # score < LIMIAR_MATCH_PARCIAL → permanece SEM_MATCH (rebaixado)
+
+    df.loc[confirmado, 'status_cruzamento'] = 'MATCH_CONFIRMADO'
+    df.loc[parcial,    'status_cruzamento'] = 'MATCH_PARCIAL'
+
+    # Respeita override APENAS_APLIC
+    df.loc[df['estrategia_match'] == 'sem_par_pncp', 'status_cruzamento'] = 'APENAS_APLIC'
+
+    return df
+
+
+def selecionar_colunas_saida(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove colunas auxiliares com prefixo _."""
+    colunas_aux = [c for c in df.columns if c.startswith('_')]
+    return df.drop(columns=colunas_aux, errors='ignore')
+
+
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
+
+
+def _aplic_sem_pncp(
+    df_a: pd.DataFrame,
+    matched_aplic_indices: set,
+) -> pd.DataFrame:
+    """
+    Identifica registros APLIC sem par em nenhum tier PNCP.
+    Usa o conjunto de índices reais do DataFrame APLIC acumulados pelos tiers.
+    Retorna DataFrame com status_cruzamento = 'APENAS_APLIC'.
+    """
+    nao_matched = df_a[~df_a.index.isin(matched_aplic_indices)].copy()
+
+    if nao_matched.empty:
+        return pd.DataFrame()
+
+    nao_matched['status_cruzamento']    = 'APENAS_APLIC'
+    nao_matched['estrategia_match']     = 'sem_par_pncp'
+    nao_matched['fuzzy_score']          = 0.0
+    nao_matched['score_composto']       = 0.0
+    nao_matched['delta_percentual']     = None
+    nao_matched['validacao_financeira'] = 'SEM_VALOR'
+
+    logger.info(f"[APLIC sem PNCP] {len(nao_matched)} registros APLIC sem par no PNCP")
+    return nao_matched
+
+
+def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cruzamento PNCP × APLIC em cascata (3 tiers) + lado APLIC sem par.
+
+    Tier 1 — Semântico + Financeiro (mais discriminante):
+        fuzzy objeto/objetivo + delta valor
+    Tier 2 — CNPJ + Data (confirmação estrutural):
+        CNPJ exato + proximidade de data
+    Tier 3 — Estrutural (fallback):
+        município + número + ano + modalidade
+
+    Colunas de diagnóstico no resultado:
+        status_cruzamento, estrategia_match, fuzzy_score, score_composto,
+        delta_percentual, validacao_financeira, delta_dias
+    """
+    logger.info("=" * 60)
+    logger.info("INICIANDO CROSSMATCH PNCP × APLIC")
+    logger.info(f"PNCP: {len(df_pncp)} registros | APLIC: {len(df_aplic)} registros")
+
+    # 1. Preparação
+    df_p = preparar_pncp(df_pncp)
+    df_a = preparar_aplic(df_aplic)
+
+    # 2. Deduplicação
+    df_p = deduplicar_pncp(df_p)
+    df_a, df_aplic_grupos = deduplicar_aplic(df_a)
+
+    # 3. Tier 1 — Semântico + Financeiro
+    matched_t1, pncp_orfaos, matched_aplic_t1 = _merge_primario(df_p, df_a)
+
+    # 4. Tier 2 — CNPJ + Data
+    matched_t2, remanescentes, matched_aplic_t2 = _merge_secundario(
+        pncp_orfaos, df_a, matched_aplic_t1
+    )
+
+    # 5. Tier 3 — Estrutural (fallback)
+    all_matched_aplic = matched_aplic_t1 | matched_aplic_t2
+    matched_t3, matched_aplic_t3 = _merge_terciario(remanescentes, df_a, all_matched_aplic)
+    all_matched_aplic |= matched_aplic_t3
+
+    # 6. Consolida lado PNCP
+    partes = [p for p in [matched_t1, matched_t2, matched_t3]
+              if isinstance(p, pd.DataFrame) and not p.empty]
+    if not partes:
+        logger.warning("Nenhum resultado após cruzamento.")
+        df_pncp_final = pd.DataFrame()
+    else:
+        df_pncp_final = pd.concat(partes, ignore_index=True)
+
+    # 7. Enriquecimento + classificação
+    if not df_pncp_final.empty:
+        df_pncp_final['fuzzy_score'] = df_pncp_final.apply(_calcular_fuzzy_score, axis=1)
+        df_pncp_final = calcular_delta_financeiro(df_pncp_final)
+        df_pncp_final = calcular_delta_temporal(df_pncp_final)
+        df_pncp_final = classificar_status(df_pncp_final)
+
+    # 8. Lado APLIC: registros sem par em nenhum tier
+    df_apenas_aplic = _aplic_sem_pncp(df_a, all_matched_aplic)
+
+    # 9. Junta os dois lados
+    partes_final = [p for p in [df_pncp_final, df_apenas_aplic]
+                    if isinstance(p, pd.DataFrame) and not p.empty]
+    df_final = pd.concat(partes_final, ignore_index=True) if partes_final else pd.DataFrame()
+
+    # 10. Remove colunas auxiliares
+    df_final = selecionar_colunas_saida(df_final)
+
+    # 11. Log de contagens
+    for col in ('status_cruzamento', 'estrategia_match'):
+        if col in df_final.columns:
+            logger.info(f"Contagem por {col}:")
+            for val, count in df_final[col].value_counts().items():
+                logger.info(f"  {val}: {count}")
+
+    logger.info(f"CROSSMATCH CONCLUÍDO: {len(df_final)} registros no resultado final")
+    logger.info("=" * 60)
+    return df_final, df_aplic_grupos
+
+
+def carregar_aplic(caminho: Path) -> pd.DataFrame:
+    """
+    Carrega o extrato APLIC a partir de CSV.
+    Corrige problemas de vírgula decimal que quebram colunas extras.
+    """
+    logger.info(f"Carregando APLIC de: {caminho}")
+
+    with open(caminho, 'r', encoding='utf-8-sig') as f:
+        reader = csv.reader(f)
+        # Pula linhas vazias iniciais (exportações Oracle costumam ter \r\n antes do header)
+        header = []
+        for row in reader:
+            if any(row):
+                header = row
+                break
+        expected_len = len(header)
+
+        fixed_rows = []
+        for row in reader:
+            if not any(row):
+                continue
+
+            # Mescla colunas extras causadas por vírgula decimal no CSV
+            while len(row) > expected_len:
+                merged_col = False
+                for i in range(len(row) - 1):
+                    if re.match(r'^\d+$', row[i]) and re.match(r'^\d{1,2}$', row[i + 1]):
+                        row[i] = f"{row[i]}.{row[i + 1]}"
+                        del row[i + 1]
+                        merged_col = True
+                        break
+                if not merged_col:
+                    break
+
+            while len(row) < expected_len:
+                row.append("")
+
+            fixed_rows.append(row[:expected_len])
+
+    df = pd.DataFrame(fixed_rows, columns=header)
+    logger.info(f"APLIC carregado: {df.shape[0]} linhas × {df.shape[1]} colunas")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Grid unificado de cobertura
+# ---------------------------------------------------------------------------
+
+def _gerar_grid(df_resultado: pd.DataFrame, cnpjs_municipio: set) -> pd.DataFrame:
+    """
+    Gera tabela-dashboard com uma linha por licitação do município,
+    indicando presença em cada sistema com S/N.
+
+    Colunas:
+        Modalidade | Nº Licitação | Órgão | Objeto | Valor Estimado |
+        No PNCP | No APLIC | No Notify | Status | Score | Data PNCP | Data APLIC
+
+    Cores aplicadas externamente conforme Status:
+        MATCH_CONFIRMADO → verde     (presente nos dois, confirmado)
+        MATCH_PARCIAL    → verde claro (presente nos dois, revisar)
+        SEM_MATCH        → amarelo   (no PNCP, falta no APLIC)
+        APENAS_APLIC     → laranja   (no APLIC, falta no PNCP)
+    """
+    linhas = []
+
+    for _, row in df_resultado.iterrows():
+        status     = row.get('status_cruzamento', '') or ''
+        cnpj_pncp  = str(row.get('orgaoEntidade_cnpj', '') or '')
+
+        # Inclui apenas registros do município de interesse ou APENAS_APLIC
+        if status != 'APENAS_APLIC' and cnpj_pncp not in cnpjs_municipio:
+            continue
+
+        no_pncp  = 'N' if status == 'APENAS_APLIC' else 'S'
+        no_aplic = 'N' if status == 'SEM_MATCH'    else 'S'
+
+        # Campos descritivos: prioriza PNCP quando disponível, fallback APLIC
+        modalidade = (
+            row.get('modalidadeNome') or
+            row.get('Modalidade')     or ''
+        )
+        numero = (
+            row.get('numeroCompra')   or
+            row.get('Nº Licitação')   or ''
+        )
+        orgao = (
+            row.get('unidadeOrgao_nomeUnidade') or
+            row.get('_orgao_nome')              or
+            row.get('UG')                       or ''
+        )
+        objeto = (
+            row.get('objetoCompra')   or
+            row.get('Objetivo')       or
+            row.get('Motivo')         or ''
+        )
+        # Objeto: limita a 200 chars para não poluir a célula
+        objeto = str(objeto)[:200] if objeto else ''
+
+        valor = row.get('valorTotalEstimado') or row.get('Valor Estimado') or ''
+
+        data_pncp  = row.get('dataPublicacaoPncp') or row.get('dataAberturaProposta') or ''
+        data_aplic = row.get('Data Abertura') or ''
+
+        linhas.append({
+            'Modalidade':      str(modalidade)[:60],
+            'Nº Licitação':    str(numero),
+            'Órgão':           str(orgao)[:60],
+            'Objeto':          objeto,
+            'Valor Estimado':  valor,
+            'No PNCP':         no_pncp,
+            'No APLIC':        no_aplic,
+            'No Notify':       '',       # preencher manualmente / integração futura
+            'Status':          status,
+            'Score':           row.get('score_composto') or '',
+            'Data PNCP':       data_pncp,
+            'Data APLIC':      data_aplic,
+        })
+
+    df = pd.DataFrame(linhas)
+
+    # Ordena: primeiro os que têm gap (S/N ou N/S), depois os confirmados
+    ordem = {'APENAS_APLIC': 0, 'SEM_MATCH': 1, 'MATCH_PARCIAL': 2, 'MATCH_CONFIRMADO': 3}
+    if not df.empty:
+        df['_ord'] = df['Status'].map(ordem).fillna(9)
+        df = df.sort_values(['_ord', 'Órgão', 'Nº Licitação']).drop(columns=['_ord'])
+
+    if not df.empty:
+        n_ambos     = ((df['No PNCP'] == 'S') & (df['No APLIC'] == 'S')).sum()
+        n_so_pncp   = ((df['No PNCP'] == 'S') & (df['No APLIC'] == 'N')).sum()
+        n_so_aplic  = ((df['No PNCP'] == 'N') & (df['No APLIC'] == 'S')).sum()
+        logger.info(f"[Grid] {len(df)} licitações | PNCP+APLIC: {n_ambos} | Só PNCP: {n_so_pncp} | Só APLIC: {n_so_aplic}")
+    return df
+
+
+# ---------------------------------------------------------------------------
+# CLI standalone
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
+    if len(sys.argv) < 3:
+        print("Uso: python crossmatch.py <pncp.xlsx> <aplic.csv>")
+        sys.exit(1)
+
+    pncp_path = Path(sys.argv[1])
+    aplic_path = Path(sys.argv[2])
+
+    if not pncp_path.exists():
+        print(f"Arquivo PNCP não encontrado: {pncp_path}")
+        sys.exit(1)
+    if not aplic_path.exists():
+        print(f"Arquivo APLIC não encontrado: {aplic_path}")
+        sys.exit(1)
+
+    df_pncp  = pd.read_excel(pncp_path, dtype=str)
+    df_aplic = carregar_aplic(aplic_path)
+
+    # Guarda APLIC original (pré-preparação) para aba APLIC_Completo
+    df_aplic_original = df_aplic.copy()
+
+    df_resultado, df_aplic_grupos = crossmatch(df_pncp, df_aplic)
+
+    if df_resultado.empty:
+        print("Resultado vazio. Verifique os arquivos de entrada.")
+        sys.exit(0)
+
+    saida = pncp_path.parent / f"crossmatch_{pncp_path.stem}.xlsx"
+
+    # Colunas de diagnóstico a destacar no início da aba principal
+    cols_diag = [c for c in [
+        'status_cruzamento', 'estrategia_match', 'score_composto',
+        'fuzzy_score', 'delta_percentual', 'delta_dias', 'validacao_financeira'
+    ] if c in df_resultado.columns]
+    outras = [c for c in df_resultado.columns if c not in cols_diag]
+    df_resultado = df_resultado[cols_diag + outras]
+
+    with pd.ExcelWriter(saida, engine='openpyxl') as writer:
+        # Aba 1 — Resultados do cruzamento
+        df_resultado.to_excel(writer, sheet_name='Resultados', index=False)
+
+        # Aba 2 — Duplicatas APLIC lado a lado (apenas grupos com >1 registro)
+        if not df_aplic_grupos.empty:
+            cols_aux = [c for c in df_aplic_grupos.columns if c.startswith('_') and c not in ('_dedup_tipo', '_dedup_grupo')]
+            df_dup_saida = df_aplic_grupos.drop(columns=cols_aux, errors='ignore')
+            df_dup_saida = df_dup_saida.rename(columns={
+                '_dedup_tipo':  'Tipo (principal/duplicata)',
+                '_dedup_grupo': 'Grupo',
+            })
+            id_cols = ['Grupo', 'Tipo (principal/duplicata)']
+            outras_dup = [c for c in df_dup_saida.columns if c not in id_cols]
+            df_dup_saida[id_cols + outras_dup].to_excel(
+                writer, sheet_name='APLIC_Duplicatas', index=False
+            )
+
+        # Aba 3 — APLIC completo original
+        df_aplic_original.to_excel(writer, sheet_name='APLIC_Completo', index=False)
+
+        # Aba 4 — Resumo
+        linhas_resumo = []
+        if 'status_cruzamento' in df_resultado.columns:
+            for status, qtd in df_resultado['status_cruzamento'].value_counts().items():
+                linhas_resumo.append({'Categoria': 'status_cruzamento', 'Valor': status, 'Qtd': qtd})
+        if 'estrategia_match' in df_resultado.columns:
+            for est, qtd in df_resultado['estrategia_match'].value_counts().items():
+                linhas_resumo.append({'Categoria': 'estrategia_match', 'Valor': est, 'Qtd': qtd})
+        if not df_aplic_grupos.empty:
+            n_grupos = df_aplic_grupos['_dedup_grupo'].nunique()
+            n_dup    = (df_aplic_grupos['_dedup_tipo'] == 'duplicata').sum()
+            linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'grupos com duplicatas', 'Qtd': n_grupos})
+            linhas_resumo.append({'Categoria': 'APLIC deduplicação', 'Valor': 'registros removidos',   'Qtd': n_dup})
+        pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
+
+        # Aba 5 — Grid unificado (dashboard de cobertura por sistema)
+        sinop_cnpjs = {v for (_, mun), v in DE_PARA_UG_CNPJ.items() if mun == 'sinop'}
+        df_grid = _gerar_grid(df_resultado, sinop_cnpjs)
+        df_grid.to_excel(writer, sheet_name='Grid', index=False)
+
+        # ── Coloração por origem ──────────────────────────────────────────────
+        # Cinza claro = linha vinda do PNCP  |  Branco = linha vinda do APLIC
+        from openpyxl.styles import PatternFill
+        FILL_PNCP  = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
+        FILL_APLIC = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+
+        def colorir_aba(ws, status_col_idx: int | None):
+            """Aplica cor linha a linha. Row 1 = header (não colore)."""
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                if status_col_idx is not None:
+                    status_val = ws.cell(row=row_idx, column=status_col_idx).value or ''
+                    fill = FILL_APLIC if status_val == 'APENAS_APLIC' else FILL_PNCP
+                else:
+                    fill = FILL_APLIC
+                for cell in row:
+                    cell.fill = fill
+
+        # Aba Resultados: usa coluna status_cruzamento para decidir origem
+        ws_res = writer.sheets['Resultados']
+        header_res = [ws_res.cell(row=1, column=c).value for c in range(1, ws_res.max_column + 1)]
+        status_idx = (header_res.index('status_cruzamento') + 1) if 'status_cruzamento' in header_res else None
+        colorir_aba(ws_res, status_idx)
+
+        # APLIC_Duplicatas e APLIC_Completo: sempre branco (origem APLIC)
+        for sheet_name in ('APLIC_Duplicatas', 'APLIC_Completo'):
+            if sheet_name in writer.sheets:
+                colorir_aba(writer.sheets[sheet_name], status_col_idx=None)
+
+        # Grid: cor por status de cobertura
+        FILL_AMBOS_OK  = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # verde   — confirmado
+        FILL_AMBOS_PAR = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")  # verde claro — parcial
+        FILL_SEM_APLIC = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")  # amarelo — só PNCP
+        FILL_SEM_PNCP  = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")  # laranja — só APLIC
+
+        ws_grid = writer.sheets['Grid']
+        header_grid = [ws_grid.cell(row=1, column=c).value for c in range(1, ws_grid.max_column + 1)]
+        status_grid_idx = (header_grid.index('Status') + 1) if 'Status' in header_grid else None
+
+        if status_grid_idx:
+            for row_idx in range(2, ws_grid.max_row + 1):
+                status_val = ws_grid.cell(row=row_idx, column=status_grid_idx).value or ''
+                if status_val == 'MATCH_CONFIRMADO':
+                    fill = FILL_AMBOS_OK
+                elif status_val == 'MATCH_PARCIAL':
+                    fill = FILL_AMBOS_PAR
+                elif status_val == 'APENAS_APLIC':
+                    fill = FILL_SEM_PNCP
+                else:  # SEM_MATCH filtrado = só PNCP
+                    fill = FILL_SEM_APLIC
+                for cell in ws_grid.iter_rows(min_row=row_idx, max_row=row_idx,
+                                               min_col=1, max_col=ws_grid.max_column):
+                    for c in cell:
+                        c.fill = fill
+
+    print(f"\nResultado exportado para: {saida}")
+    print(f"Abas: Resultados | Grid | APLIC_Duplicatas | APLIC_Completo | Resumo")
+    print(f"\nTotal de registros (Resultados): {len(df_resultado)}")
+    if 'status_cruzamento' in df_resultado.columns:
+        print("\nStatus do cruzamento:")
+        print(df_resultado['status_cruzamento'].value_counts().to_string())
+    if not df_aplic_grupos.empty:
+        n_dup = (df_aplic_grupos['_dedup_tipo'] == 'duplicata').sum()
+        print(f"\nAPLIC_Duplicatas: {n_dup} registros duplicados em {df_aplic_grupos['_dedup_grupo'].nunique()} grupos")
