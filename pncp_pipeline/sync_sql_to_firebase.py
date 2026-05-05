@@ -60,6 +60,9 @@ def sync_all_from_sql():
     municipios = df_results['municipio'].unique()
     
     for mun in municipios:
+        if not mun or str(mun).strip() == "":
+            logger.warning("Pulando município vazio no crossmatch.")
+            continue
         logger.info(f"Processando auditoria para {mun}...")
         
         # Filtra os resultados deste município

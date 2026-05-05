@@ -122,23 +122,38 @@ def salvar_aplic(df: pd.DataFrame):
     conn = get_connection()
     df_db = pd.DataFrame()
 
-    # Mapeamento APLIC
-    cnpj = df.get("_cnpj_mapeado", "").astype(str).str.replace(r"\D", "", regex=True)
-    numero = df.get("_numero_puro", "").astype(str)
-    ano = df.get("_ano_extraido", "").astype(str)
-    df_db["id"] = cnpj + "-" + numero + "-" + ano
+    # Mapeamento APLIC robusto para ID
+    def _get_col(search_terms):
+        # 1. Exact matches first
+        for col in df.columns:
+            for term in search_terms:
+                if term.lower() == col.lower():
+                    return df[col]
+        # 2. Partial matches as fallback
+        for col in df.columns:
+            for term in search_terms:
+                if term.lower() in col.lower():
+                    return df[col]
+        return pd.Series([""] * len(df))
+
+    ug_code = _get_col(["_ug_puro", "ug_code", "ug"]).fillna("").astype(str)
+    numero = _get_col(["_numero_puro", "licit", "numero"]).fillna("").astype(str)
+    ano = _get_col(["_ano_extraido", "exer", "ano"]).fillna("").astype(str)
+    cnpj = _get_col(["_cnpj_mapeado", "cnpj"]).fillna("").astype(str).str.replace(r"\D", "", regex=True)
+
+    df_db["id"] = ug_code + "-" + numero + "-" + ano
     
-    df_db["municipio"] = df.get("Município", "")
-    df_db["orgao"] = df.get("UG", "")
+    df_db["municipio"] = _get_col(["_municipio_norm", "município", "municipio"]).fillna("")
+    df_db["orgao"] = _get_col(["_orgao_nome", "ug", "orgao"]).fillna("")
     df_db["cnpj"] = cnpj
-    df_db["modalidade"] = df.get("Modalidade", "")
-    df_db["modalidade_cod"] = df.get("Cod. Modalidade", "")
+    df_db["modalidade"] = df.get("Modalidade", df.get("modalidade", ""))
+    df_db["modalidade_cod"] = df.get("Cod. Modalidade", df.get("modalidade_cod", ""))
     df_db["numero"] = numero
     df_db["ano"] = ano
-    df_db["objeto"] = df.get("Objetivo", "")
-    df_db["valor"] = pd.to_numeric(df.get("Valor Estimado", 0), errors="coerce")
-    df_db["data_abertura"] = pd.to_datetime(df.get("Data Abertura", ""), errors="coerce")
-    df_db["ug_code"] = df.get("Cód. UG", "")
+    df_db["objeto"] = df.get("Objetivo", df.get("objeto", ""))
+    df_db["valor"] = pd.to_numeric(df.get("Valor Estimado", df.get("valor", 0)), errors="coerce")
+    df_db["data_abertura"] = pd.to_datetime(df.get("Data Abertura", df.get("data_abertura", "")), errors="coerce")
+    df_db["ug_code"] = ug_code
 
     # Filtra duplicados internos
     df_db = df_db.drop_duplicates(subset=["id"])
@@ -167,7 +182,10 @@ def salvar_crossmatch(df: pd.DataFrame, municipio: str):
     df_db = pd.DataFrame()
 
     # Mapeamento do resultado do Crossmatch
-    df_db["id_pncp"] = df["numeroControlePNCP"].astype(str).str.replace("/", "_")
+    if "numeroControlePNCP" in df.columns:
+        df_db["id_pncp"] = df["numeroControlePNCP"].astype(str).str.replace("/", "_")
+    else:
+        df_db["id_pncp"] = pd.Series(["nan"] * len(df))
     
     # id_aplic: reconstruir o ID de forma robusta
     def _get_col_safe(search_terms, exact_terms=None):
@@ -183,9 +201,9 @@ def salvar_crossmatch(df: pd.DataFrame, municipio: str):
                     return df[col]
         return pd.Series([""] * len(df))
 
-    ug = _get_col_safe(["ug_code", "cód. ug", "ug"], exact_terms=["Cód. UG", "ug_code"])
-    numero = _get_col_safe(["licit", "nº", "n "], exact_terms=["_numero_puro", "Nº Licitação"])
-    ano = _get_col_safe(["exer", "ano"], exact_terms=["_ano_extraido", "Exercício"])
+    ug = _get_col_safe(["ug_code", "ug"], exact_terms=["Cód. UG", "ug_code"])
+    numero = _get_col_safe(["numero", "licit", "nº"], exact_terms=["_numero_puro", "Nº Licitação", "numero"])
+    ano = _get_col_safe(["ano", "exer"], exact_terms=["_ano_extraido", "Exercício", "ano"])
     
     # Usamos UG + Numero + Ano para garantir unicidade, especialmente no Estado
     df_db["id_aplic"] = ug.fillna("").astype(str) + "-" + numero.fillna("").astype(str) + "-" + ano.fillna("").astype(str)

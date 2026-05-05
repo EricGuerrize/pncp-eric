@@ -217,6 +217,9 @@ def sincronizar(df_pncp: pd.DataFrame, data_ref: str = "") -> dict:
     municipios_processados = 0
 
     for municipio_raw, df_mun in df_pncp.groupby(COL_MUNICIPIO):
+        if not municipio_raw or str(municipio_raw).strip() == "":
+            logger.warning("Pulando município vazio no PNCP.")
+            continue
         municipio_slug = _slug_municipio(str(municipio_raw))
 
         # Cria/atualiza documento pai para que o município apareça ao listar a coleção

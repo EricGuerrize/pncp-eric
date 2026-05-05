@@ -362,13 +362,13 @@
     <option value="sinop">Sinop</option>
     <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
     <option value="jangada">Jangada</option>
+    <option value="rondonopolis">Rondonópolis</option>
     <option value="rondolandia">Rondolândia</option>
     <option value="acorizal">Acorizal</option>
+    <option value="estado_de_mato_grosso">Estado de Mato Grosso</option>
   </select>
-  <label for="filtro-ano">Ano:</label>
-  <select id="filtro-ano" onchange="onAnoChange(this.value)">
-    <option value="">Todos</option>
-  </select>
+  <!-- Filtro de Ano removido/escondido, fixado em 2025 -->
+  <input type="hidden" id="filtro-ano-val" value="2025">
   <label for="filtro-orgao">Órgão:</label>
   <select id="filtro-orgao" onchange="onFiltroChange(this.value)">
     <option value="">Todos</option>
@@ -496,6 +496,21 @@ const MUNICIPIOS = {
       { cnpj:'24772071000170', nome:'CAMARA MUNICIPAL DE JANGADA', ugs:['1115542'] },
       { cnpj:'35547084000162', nome:'FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DOS SERVIDORES DE JANGADA/MT', ugs:['1159581'] },
     ]
+  },
+  estado_de_mato_grosso: {
+    nome: 'Estado de Mato Grosso', uf: 'MT',
+    orgaos: [
+      { cnpj:'03507415000144', nome:'Governo do Estado de Mato Grosso', ugs: [] }
+    ]
+  },
+  rondonopolis: {
+    nome: 'Rondonópolis', uf: 'MT',
+    orgaos: [
+      { cnpj:'03507415000144', nome:'PREFEITURA MUNICIPAL DE RONDONOPOLIS', ugs:['1112414'] },
+      { cnpj:'00814426000182', nome:'CAMARA MUNICIPAL DE RONDONOPOLIS', ugs:['1111629'] },
+      { cnpj:'03819075000160', nome:'INSTITUTO MUNICIPAL DE PREVIDENCIA DOS SERVIDORES PUBLICOS DE RONDONOPOLIS/MT', ugs:['1117978'] },
+      { cnpj:'24696114000174', nome:'SERVICO AUTONOMO DE AGUA E ESGOTO DE RONDONOPOLIS', ugs:['1142512'] },
+    ]
   }
 };
 
@@ -513,7 +528,7 @@ const firebaseConfig = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Municípios do MVP — único filtro do dropdown
-const MUNICIPIOS_MVP = new Set(['sinop','lucas_do_rio_verde','jangada','rondolandia','acorizal']);
+const MUNICIPIOS_MVP = new Set(['sinop','lucas_do_rio_verde','jangada','rondonopolis','rondolandia','acorizal', 'estado_de_mato_grosso']);
 
 let currentMunKey = 'sinop';
 let pncpBuffer   = [];   // registros da API PNCP
@@ -526,7 +541,7 @@ let monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
 
 let abaAtiva    = 'ambos';
 let orgaoFiltro = '';
-let filtroAno   = String(new Date().getFullYear());
+let filtroAno      = '2025';
 let painelAberto = false;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1374,15 +1389,8 @@ function updateOrgaoFilter() {
 }
 
 function updateAnoFilterFromData(data) {
-  const anos = new Set();
-  [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])].forEach(d => {
-    if (d.ano) anos.add(String(d.ano));
-  });
-  const sel = document.getElementById('filtro-ano');
-  const sorted = Array.from(anos).sort().reverse();
-  sel.innerHTML = '<option value="">Todos</option>' +
-    sorted.map(a => `<option value="${a}"${a === filtroAno ? ' selected' : ''}>${a}</option>`).join('');
-  if (sorted.length && !sorted.includes(filtroAno)) filtroAno = sorted[0] || '';
+  // Fixado em 2025 conforme solicitado
+  filtroAno = '2025';
 }
 
 function updateOrgaoFilterFromData(data) {
@@ -1430,13 +1438,6 @@ function togglePainel() {
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════
 
-function setDefaultDates() {
-  const fim = new Date();
-  const ini = new Date();
-  ini.setDate(ini.getDate() - 30);
-  document.getElementById('data-ini').value = ini.toISOString().slice(0,10);
-  document.getElementById('data-fim').value = fim.toISOString().slice(0,10);
-}
 
 async function init() {
   monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
@@ -1444,9 +1445,10 @@ async function init() {
   if (viewSource === 'firebase') await loadMonitor();
 }
 
-// Inicializa
-setDefaultDates();
-init();
+// Inicializa quando o DOM estiver pronto
+document.addEventListener('DOMContentLoaded', () => {
+  init();
+});
 </script>
 </body>
 </html>
