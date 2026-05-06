@@ -175,11 +175,18 @@ def converter_valor_br(texto) -> float | None:
         return None
 
 
+def _normalizar_municipio(texto: str) -> str:
+    """Remove acentos e coloca em lowercase — sem aplicar stopwords de licitação."""
+    nfkd = unicodedata.normalize("NFKD", str(texto))
+    sem_acento = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return sem_acento.lower().strip()
+
+
 def mapear_ug(cod_ug, municipio: str) -> dict | None:
     """Lookup no DE-PARA via (cod_ug, municipio_normalizado)."""
     if not cod_ug or str(cod_ug).strip() == '':
         return None
-    chave = (str(cod_ug).strip(), normalizar_texto(municipio))
+    chave = (str(cod_ug).strip(), _normalizar_municipio(municipio))
     return DE_PARA_UG_INFO.get(chave)
 
 
@@ -243,7 +250,8 @@ def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
     # Forward-fill do Cód. UG (aparece apenas na primeira linha de cada grupo)
     col_ug = next((c for c in df.columns if 'ug' in c.lower() and ('cód' in c.lower() or 'cod' in c.lower())), None)
     if col_ug:
-        df[col_ug] = df[col_ug].replace('', pd.NA).ffill()
+        # Converte para string antes de substituir strings vazias e NaN numérico
+        df[col_ug] = df[col_ug].astype(str).replace({'': pd.NA, 'nan': pd.NA, 'None': pd.NA}).ffill()
 
     # Coluna de número da licitação
     col_numero = next(
@@ -1092,7 +1100,7 @@ if __name__ == "__main__":
         pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
 
         # Aba 5 — Grid unificado (dashboard de cobertura por sistema)
-        sinop_cnpjs = {v for (_, mun), v in DE_PARA_UG_CNPJ.items() if mun == 'sinop'}
+        sinop_cnpjs = {v["cnpj"] for (_, mun), v in DE_PARA_UG_INFO.items() if mun == 'sinop'}
         df_grid = _gerar_grid(df_resultado, sinop_cnpjs)
         df_grid.to_excel(writer, sheet_name='Grid', index=False)
 

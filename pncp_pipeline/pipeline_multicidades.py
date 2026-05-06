@@ -149,8 +149,8 @@ def etapa_coletar_pncp(inicio: str, fim: str) -> Path | None:
 
 def etapa_crossmatch(
     municipio: str,
-    aplic_csv: Path,
     ano: int,
+    aplic_csv: Path | None = None,
     pncp_excel: Path | None = None,
 ) -> Path | None:
     """
@@ -158,11 +158,16 @@ def etapa_crossmatch(
 
     Fonte PNCP (em ordem de preferência):
       1. pncp_excel — arquivo Excel local (quando disponível)
-      2. Firebase    — carrega apenas_pncp + ambos do Firestore (padrão quando sem Excel)
+      2. Firebase    — carrega apenas_pncp + ambos do Firestore
+
+    Fonte APLIC (em ordem de preferência):
+      1. aplic_csv  — arquivo CSV local (quando disponível)
+      2. Firebase    — carrega aplic_raw do Firestore (populado pelo sincronizar_aplic.py)
 
     Retorna caminho do Excel de resultado ou None em caso de erro.
     """
     from crossmatch import crossmatch, carregar_aplic, load_orgaos
+    from firebase_sync import carregar_pncp_municipio, carregar_aplic_municipio
 
     load_orgaos()
 
@@ -174,7 +179,6 @@ def etapa_crossmatch(
         df_pncp = pd.read_excel(pncp_excel, dtype=str)
         logger.info(f"  PNCP carregado do Excel: {len(df_pncp)} registros (MT completo)")
     else:
-        from firebase_sync import carregar_pncp_municipio
         df_pncp = carregar_pncp_municipio(municipio_slug)
         if df_pncp.empty:
             logger.error(f"  Nenhum dado PNCP no Firebase para {municipio_slug}. "
@@ -182,13 +186,17 @@ def etapa_crossmatch(
             return None
         logger.info(f"  PNCP carregado do Firebase: {len(df_pncp)} registros ({municipio_slug})")
 
-    # Carrega APLIC do município
-    if not aplic_csv.exists():
-        logger.error(f"  CSV APLIC não encontrado: {aplic_csv}")
-        return None
-
-    df_aplic = carregar_aplic(aplic_csv)
-    logger.info(f"  APLIC carregado: {len(df_aplic)} registros ({municipio_slug})")
+    # Carrega APLIC: CSV local ou Firebase
+    if aplic_csv is not None and aplic_csv.exists():
+        df_aplic = carregar_aplic(aplic_csv)
+        logger.info(f"  APLIC carregado do CSV: {len(df_aplic)} registros ({municipio_slug})")
+    else:
+        df_aplic = carregar_aplic_municipio(municipio_slug)
+        if df_aplic.empty:
+            logger.error(f"  Nenhum dado APLIC no Firebase para {municipio_slug}. "
+                         "Execute sincronizar_aplic.py na máquina do TCE antes.")
+            return None
+        logger.info(f"  APLIC carregado do Firebase: {len(df_aplic)} registros ({municipio_slug})")
 
     if df_aplic.empty:
         logger.warning(f"  APLIC vazio para {municipio_slug}. Pulando.")
@@ -295,6 +303,7 @@ def run(
     cidades: list[str],
     ano: int,
     pncp_excel: str | None = None,
+    aplic_csv: str | None = None,
     skip_oracle: bool = False,
     skip_firebase: bool = False,
     skip_pncp_sync: bool = False,
@@ -328,39 +337,42 @@ def run(
     else:
         logger.info("Sync PNCP pulado (--skip-firebase ou --skip-pncp-sync)")
 
-    # ── Passo 3: Extração Oracle ─────────────────────────────────────────────
+    # ── Passo 3: Extração Oracle (opcional) ─────────────────────────────────
     aplic_csvs: dict[str, Path] = {}
 
-    if not skip_oracle:
+    if aplic_csv:
+        # CSV explícito via --aplic-csv: aplica para todas as cidades
+        csv_path = Path(aplic_csv)
+        if csv_path.exists():
+            for cidade in cidades:
+                aplic_csvs[_slug(cidade)] = csv_path
+            logger.info(f"--aplic-csv: usando {csv_path.name} para todas as cidades")
+        else:
+            logger.error(f"CSV APLIC não encontrado: {aplic_csv}")
+            sys.exit(1)
+    elif not skip_oracle:
         aplic_csvs = etapa_oracle(cidades, ano)
     else:
-        logger.info("--skip-oracle: usando CSVs existentes em input/")
+        logger.info("--skip-oracle: verificando CSVs existentes em input/")
         for cidade in cidades:
             slug = _slug(cidade)
             candidate = INPUT_DIR / f"licitacao_{slug}_{ano}.csv"
             if candidate.exists():
                 aplic_csvs[slug] = candidate
                 logger.info(f"  Encontrado: {candidate.name}")
-            else:
-                logger.warning(f"  CSV não encontrado: {candidate.name}")
 
     if not aplic_csvs:
-        logger.error("Nenhum CSV APLIC disponível. Verifique a conexão Oracle ou os arquivos em input/.")
-        sys.exit(1)
+        logger.info("Nenhum CSV APLIC local — APLIC será lido do Firebase por município.")
 
     # ── Passos 3+4: Crossmatch → Firebase por cidade ─────────────────────────
     resultados: list[dict] = []
 
     for cidade in cidades:
         slug = _slug(cidade)
-        aplic_csv = aplic_csvs.get(slug)
-
-        if aplic_csv is None:
-            logger.warning(f"Sem CSV APLIC para '{cidade}' (slug: {slug}). Pulando.")
-            continue
+        cidade_csv = aplic_csvs.get(slug)  # None → etapa_crossmatch usa Firebase
 
         # Crossmatch (pncp_path pode ser None → carrega do Firebase)
-        crossmatch_xlsx = etapa_crossmatch(cidade, aplic_csv, ano, pncp_excel=pncp_path)
+        crossmatch_xlsx = etapa_crossmatch(cidade, ano, aplic_csv=cidade_csv, pncp_excel=pncp_path)
         if crossmatch_xlsx is None:
             continue
 
@@ -427,6 +439,12 @@ def main():
         help="Data fim para coleta PNCP (ex: 20260423)",
     )
     parser.add_argument(
+        "--aplic-csv",
+        metavar="ARQUIVO",
+        help="CSV APLIC local para teste ad-hoc (ex: aplic_sinop.csv). "
+             "Se omitido, APLIC é lido do Firebase (aplic_raw).",
+    )
+    parser.add_argument(
         "--skip-oracle",
         action="store_true",
         help="Pula extração Oracle; usa CSVs já existentes em input/",
@@ -448,6 +466,7 @@ def main():
         cidades=args.cidades,
         ano=args.ano,
         pncp_excel=args.pncp_excel,
+        aplic_csv=args.aplic_csv,
         skip_oracle=args.skip_oracle,
         skip_firebase=args.skip_firebase,
         skip_pncp_sync=args.skip_pncp_sync,

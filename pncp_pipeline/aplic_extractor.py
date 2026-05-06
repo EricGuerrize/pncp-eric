@@ -319,7 +319,9 @@ def atualizar_orgaos_json(df_ugs: pd.DataFrame) -> None:
         if not ug or ug in ugs_existentes:
             continue
 
-        municipio = str(row.get("municipio", "")).strip().lower()
+        # Normaliza sem acento para bater com normalizar_texto() do crossmatch.py
+        municipio_raw = str(row.get("municipio", "")).strip()
+        municipio = _normalizar(municipio_raw).lower()
         cnpj      = re.sub(r"\D", "", str(row.get("cnpj", "") or ""))
         nome      = str(row.get("nome", "")).strip()
 
