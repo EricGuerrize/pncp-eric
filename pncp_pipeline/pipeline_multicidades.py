@@ -402,7 +402,7 @@ def main():
     parser.add_argument(
         "--cidades",
         nargs="+",
-        required=True,
+        default=["lucas do rio verde", "acorizal", "jangada", "rondolandia", "sinop"],
         help="Municípios a processar (ex: rondolandia acorizal 'lucas do rio verde')",
     )
     parser.add_argument(
