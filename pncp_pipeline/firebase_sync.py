@@ -360,11 +360,20 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
             count += 2 # Set + Delete = 2 ops
 
         elif status == "APENAS_APLIC":
-            cnpj   = str(row.get("_cnpj_mapeado") or "").replace("/", "_")
-            numero = str(row.get("_numero_puro") or row.get("Nº Licitação") or "").replace("/", "_")
-            ano    = str(row.get("_ano_extraido") or row.get("Exercício") or "")
-            doc_id = f"{cnpj}-{numero}-{ano}" if cnpj else ""
-            if not doc_id:
+            def _clean(v):
+                s = str(v) if v is not None else ""
+                return "" if s in ("None", "nan", "NaN", "<NA>") else s.strip()
+
+            cnpj   = _clean(row.get("_cnpj_mapeado")).replace("/", "_")
+            numero = (_clean(row.get("_numero_puro")) or _clean(row.get("Nº Licitação"))).replace("/", "_")
+            ano    = _clean(row.get("_ano_extraido")) or _clean(row.get("Exercício"))
+
+            # Fallback: se cnpj ainda vazio, monta ID por número+ano
+            if cnpj:
+                doc_id = f"{cnpj}-{numero}-{ano}"
+            elif numero:
+                doc_id = f"noncnpj-{numero}-{ano}"
+            else:
                 continue
 
             doc  = _doc_aplic(row, municipio_slug)
