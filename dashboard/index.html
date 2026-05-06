@@ -353,7 +353,54 @@
   </div>
 </header>
 
-<!-- Painel de Sincronização Removido - Apenas visualização via Firebase -->
+<!-- ── Painel APLIC ──────────────────────────────────────────────────────── -->
+<div class="painel">
+  <div class="painel-header" onclick="togglePainel()">
+    <span>📂 Importar CSV do APLIC <span class="tag">Cruzamento Local</span></span>
+    <span id="painel-icon" style="font-size:.8rem;color:#888">▼ abrir</span>
+  </div>
+  <div id="painel-body">
+    <div class="steps" style="grid-template-columns:1fr 1fr">
+
+      <!-- Step 1: Importar APLIC -->
+      <div class="step" id="step-2">
+        <div class="step-header">
+          <div class="step-num">1</div>
+          <div class="step-title">Importar CSV do APLIC</div>
+        </div>
+        <div class="step-body">
+          <p style="font-size:.78rem;color:#666;line-height:1.4">
+            Exporte o extrato de licitações do APLIC/TCE-MT em formato CSV e selecione abaixo.
+          </p>
+          <label class="file-btn">
+            <input type="file" id="file-aplic" accept=".csv,.CSV" onchange="onFileAplic(this)" />
+            📂 Selecionar CSV do APLIC
+          </label>
+          <div class="step-status" id="aplic-status">Aguardando arquivo.</div>
+        </div>
+      </div>
+
+      <!-- Step 2: Cruzar -->
+      <div class="step" id="step-3">
+        <div class="step-header">
+          <div class="step-num">2</div>
+          <div class="step-title">Cruzar com PNCP do Firebase</div>
+        </div>
+        <div class="step-body">
+          <p style="font-size:.78rem;color:#666;line-height:1.4">
+            Cruza o CSV carregado com os dados do PNCP já salvos no Firebase para este município/ano.
+          </p>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-cross" onclick="runCrossMatch()" disabled>Cruzar</button>
+            <button class="btn btn-outline" id="btn-voltar-firebase" onclick="voltarFirebase()" style="display:none">↩ Voltar ao Firebase</button>
+          </div>
+          <div class="step-status" id="cross-status">Carregue o CSV do APLIC primeiro.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
 <div class="toolbar">
@@ -394,11 +441,27 @@
     <div class="label">Só no APLIC</div>
     <div class="desc">Sem publicação no portal federal (PNCP)</div>
   </div>
-  <div class="card vermelho" title="Publicadas no PNCP há mais de 3 dias úteis sem aparecerem no APLIC — prazo legal vencido">
+  <div class="card vermelho" title="Publicadas no PNCP há mais de 5 dias úteis sem aparecerem no APLIC — prazo legal vencido">
     <div class="num" id="cnt-alertas">—</div>
     <div class="label">Prazo Vencido</div>
-    <div class="desc">+3 dias úteis no PNCP sem registro no APLIC</div>
+    <div class="desc">+5 dias úteis no PNCP sem registro no APLIC</div>
   </div>
+</div>
+
+<!-- ── Resumo do município ──────────────────────────────────────────────── -->
+<div id="resumo-municipio" style="
+  margin: 0 32px 16px;
+  background: #eef2fb;
+  border-left: 4px solid #1a3a6b;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 18px;
+  font-size: .83rem;
+  color: #1a2a4a;
+  line-height: 1.55;
+  display: none;
+">
+  <strong id="resumo-titulo" style="font-size:.9rem;display:block;margin-bottom:4px;"></strong>
+  <span id="resumo-texto"></span>
 </div>
 
 <!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
@@ -866,11 +929,11 @@ function processAplic(rows) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function checkCrossReady() {
-  const ready = pncpBuffer.length > 0 && aplicsBuffer.length > 0;
+  const ready = aplicsBuffer.length > 0;
   document.getElementById('btn-cross').disabled = !ready;
   if (ready) {
     document.getElementById('cross-status').textContent =
-      `Pronto: ${pncpBuffer.length} PNCP × ${aplicsBuffer.length} APLIC.`;
+      `Pronto: ${aplicsBuffer.length} registros APLIC carregados. Clique em Cruzar.`;
     document.getElementById('step-3').className = 'step active';
   }
 }
@@ -903,22 +966,34 @@ function computeScore(p, a) {
   return Math.round(textScore * 0.5 + valScore * 0.3 + dateScore * 0.2);
 }
 
-function runCrossMatch() {
-  if (!pncpBuffer.length || !aplicsBuffer.length) return;
+async function runCrossMatch() {
+  if (!aplicsBuffer.length) return;
 
   document.getElementById('btn-cross').disabled = true;
+  setCrossStatus('Carregando dados PNCP do Firebase…','loading');
+
+  // Carrega dados PNCP do Firebase (ambos + apenas_pncp = todos do PNCP)
+  let fbAmbos, fbApenasPncp;
+  try {
+    [fbAmbos, fbApenasPncp] = await Promise.all([
+      carregarSub('ambos'), carregarSub('apenas_pncp')
+    ]);
+  } catch(e) {
+    setCrossStatus('Erro ao carregar Firebase: ' + e.message, 'err');
+    document.getElementById('btn-cross').disabled = false;
+    return;
+  }
+
   setCrossStatus('Cruzando…','loading');
 
-  const mun = MUNICIPIOS[currentMunKey];
-
-  // Prepara PNCP: agrega campos acessíveis
-  const pncp = pncpBuffer.map(r => ({
-    _cnpj:      pncpCnpj(r),
-    _numero:    String(r.numeroCompra || '').match(/(\d+)/)?.[1] || '',
-    _ano:       String(r.anoCompra || ''),
-    _obj_norm:  normalizeText(r.objetoCompra || ''),
-    _data:      parseDate(r.dataPublicacaoPncp || r.dataAberturaProposta),
-    _valor:     parseFloat(r.valorTotalEstimado) || null,
+  // Constrói pncpBuffer a partir dos docs Firebase (campo cnpj já salvo)
+  const pncp = [...fbAmbos, ...fbApenasPncp].map(r => ({
+    _cnpj:      cleanCnpj(r.cnpj || ''),
+    _numero:    String(r.numero || '').match(/(\d+)/)?.[1] || '',
+    _ano:       String(r.ano || ''),
+    _obj_norm:  normalizeText(r.objeto || ''),
+    _data:      r.dataPNCP?.toDate ? r.dataPNCP.toDate() : (r.dataPNCP ? new Date(r.dataPNCP) : null),
+    _valor:     parseFloat(r.valor) || null,
     _raw:       r
   }));
 
@@ -963,14 +1038,33 @@ function runCrossMatch() {
   const summary = `✓ ${matched.length} cruzados | ${apenas_pncp.length} só PNCP | ${apenas_aplic.length} só APLIC`;
   setCrossStatus(summary, 'ok');
   document.getElementById('step-3').className = 'step done';
-  document.getElementById('btn-save').disabled = false;
+  const btnSave = document.getElementById('btn-save');
+  if (btnSave) btnSave.disabled = false;
+  document.getElementById('btn-voltar-firebase').style.display = '';
 
   // Exibe resultados no monitor
   viewSource = 'analise';
-  document.getElementById('fonte-chip').textContent = '🔬 Análise';
+  document.getElementById('fonte-chip').textContent = '🔬 Análise Local';
   document.getElementById('fonte-chip').className = 'fonte-chip analise';
   monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
   renderFromCross();
+}
+
+function voltarFirebase() {
+  aplicsBuffer = []; crossResult = null;
+  viewSource = 'firebase';
+  document.getElementById('fonte-chip').textContent = '📡 Firebase';
+  document.getElementById('fonte-chip').className = 'fonte-chip';
+  document.getElementById('aplic-status').textContent = 'Aguardando arquivo.';
+  document.getElementById('step-2').className = 'step';
+  document.getElementById('step-3').className = 'step';
+  document.getElementById('cross-status').textContent = 'Carregue o CSV do APLIC primeiro.';
+  document.getElementById('btn-cross').disabled = true;
+  document.getElementById('btn-voltar-firebase').style.display = 'none';
+  const fileInput = document.getElementById('file-aplic');
+  if (fileInput) fileInput.value = '';
+  monitorCache = { ambos: null, apenas_pncp: null, apenas_aplic: null };
+  loadMonitor();
 }
 
 // Converte crossResult para o formato que as funções de render esperam
@@ -978,19 +1072,19 @@ function renderFromCross() {
   const mun = MUNICIPIOS[currentMunKey];
 
   const ambos = crossResult.matched.map(m => {
-    const r = m.pncp._raw;
+    const r = m.pncp._raw;  // Firebase doc: campos curtos (orgao, objeto, numero…)
     const a = m.aplic;
     const dataPNCP = m.pncp._data;
     return {
-      orgao:         r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '',
-      modalidade:    r.modalidadeNome || MODALIDADES[r.modalidadeId] || '',
-      numero:        r.numeroCompra || '',
-      ano:           String(r.anoCompra || ''),
-      objeto:        r.objetoCompra || '',
+      orgao:         r.orgao || '',
+      modalidade:    r.modalidade || '',
+      numero:        r.numero || '',
+      ano:           String(r.ano || ''),
+      objeto:        r.objeto || '',
       valor:         m.pncp._valor,
       cnpj:          m.pncp._cnpj,
       dataPNCP:      dataPNCP,
-      prazoAplic:    dataPNCP ? addWorkdays(dataPNCP, 3) : null,
+      prazoAplic:    dataPNCP ? addWorkdays(dataPNCP, 5) : null,
       statusPNCP:    'S', statusAPLIC: 'S', alertaAtivo: false,
       orgao_aplic:   a._orgao_nome || '',
       numero_aplic:  a._numero || '',
@@ -1004,20 +1098,20 @@ function renderFromCross() {
   });
 
   const apenas_pncp = crossResult.apenas_pncp.map(p => {
-    const r = p._raw;
+    const r = p._raw;  // Firebase doc
     const dataPNCP = p._data;
     return {
-      orgao:       r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '',
-      modalidade:  r.modalidadeNome || MODALIDADES[r.modalidadeId] || '',
-      numero:      r.numeroCompra || '',
-      ano:         String(r.anoCompra || ''),
-      objeto:      r.objetoCompra || '',
+      orgao:       r.orgao || '',
+      modalidade:  r.modalidade || '',
+      numero:      r.numero || '',
+      ano:         String(r.ano || ''),
+      objeto:      r.objeto || '',
       valor:       p._valor,
       cnpj:        p._cnpj,
       dataPNCP:    dataPNCP,
-      prazoAplic:  dataPNCP ? addWorkdays(dataPNCP, 3) : null,
+      prazoAplic:  dataPNCP ? addWorkdays(dataPNCP, 5) : null,
       statusPNCP:  'S', statusAPLIC: 'pendente',
-      alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP, 3)) : false,
+      alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP, 5)) : false,
       municipio:   currentMunKey
     };
   });
@@ -1055,21 +1149,21 @@ async function saveToFirebase() {
       const r = m.pncp._raw;
       const a = m.aplic;
       const dataPNCP = m.pncp._data;
-      const docId = String(r.numeroControlePNCP || `${m.pncp._cnpj}-${m.pncp._numero}-${m.pncp._ano}`)
+      const docId = String(r.id || r.numeroControlePNCP || `${m.pncp._cnpj}-${m.pncp._numero}-${m.pncp._ano}`)
         .replace(/\//g,'_');
       if (!docId) continue;
 
       const doc = {
         municipio:       currentMunKey,
-        orgao:           String(r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '').slice(0,80),
-        modalidade:      String(r.modalidadeNome || MODALIDADES[r.modalidadeId] || '').slice(0,60),
-        numero:          String(r.numeroCompra || ''),
-        ano:             String(r.anoCompra || ''),
-        objeto:          String(r.objetoCompra || '').slice(0,300),
+        orgao:           String(r.orgao || '').slice(0,80),
+        modalidade:      String(r.modalidade || '').slice(0,60),
+        numero:          String(r.numero || ''),
+        ano:             String(r.ano || ''),
+        objeto:          String(r.objeto || '').slice(0,300),
         valor:           m.pncp._valor,
         cnpj:            m.pncp._cnpj,
         dataPNCP:        dataPNCP,
-        prazoAplic:      dataPNCP ? addWorkdays(dataPNCP,3) : null,
+        prazoAplic:      dataPNCP ? addWorkdays(dataPNCP,5) : null,
         statusPNCP:      'S', statusAPLIC: 'S', alertaAtivo: false,
         orgao_aplic:     String(a._orgao_nome || '').slice(0,80),
         numero_aplic:    String(a._numero || ''),
@@ -1090,7 +1184,7 @@ async function saveToFirebase() {
     for (const p of crossResult.apenas_pncp) {
       const r = p._raw;
       const dataPNCP = p._data;
-      const docId = String(r.numeroControlePNCP || '').replace(/\//g,'_');
+      const docId = String(r.id || r.numeroControlePNCP || '').replace(/\//g,'_');
       if (!docId) continue;
 
       // Não reescreve se já está em ambos
@@ -1099,17 +1193,17 @@ async function saveToFirebase() {
 
       const doc = {
         municipio:   currentMunKey,
-        orgao:       String(r.unidadeOrgao?.nomeUnidade || r.unidadeOrgao_nomeUnidade || '').slice(0,80),
-        modalidade:  String(r.modalidadeNome || MODALIDADES[r.modalidadeId] || '').slice(0,60),
-        numero:      String(r.numeroCompra || ''),
-        ano:         String(r.anoCompra || ''),
-        objeto:      String(r.objetoCompra || '').slice(0,300),
+        orgao:       String(r.orgao || '').slice(0,80),
+        modalidade:  String(r.modalidade || '').slice(0,60),
+        numero:      String(r.numero || ''),
+        ano:         String(r.ano || ''),
+        objeto:      String(r.objeto || '').slice(0,300),
         valor:       p._valor,
         cnpj:        p._cnpj,
         dataPNCP:    dataPNCP,
-        prazoAplic:  dataPNCP ? addWorkdays(dataPNCP,3) : null,
+        prazoAplic:  dataPNCP ? addWorkdays(dataPNCP,5) : null,
         statusPNCP:  'S', statusAPLIC: 'pendente',
-        alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP,3)) : false,
+        alertaAtivo: dataPNCP ? (new Date() > addWorkdays(dataPNCP,5)) : false,
         criadoEm: TS, atualizadoEm: TS
       };
       await sub('apenas_pncp').doc(docId).set(doc);
@@ -1266,7 +1360,7 @@ function renderApenasPncp(docs) {
       <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
       <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
       <td style="white-space:nowrap">${fmtDate(d.prazoAplic)}</td>
-      <td>${d.alertaAtivo ? '<span class="badge-alerta" title="Publicado no PNCP há mais de 3 dias úteis e ainda sem registro no APLIC">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
+      <td>${d.alertaAtivo ? '<span class="badge-alerta" title="Publicado no PNCP há mais de 5 dias úteis e ainda sem registro no APLIC">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
     </tr>`).join('');
   return `<table>
     <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
@@ -1314,11 +1408,49 @@ function onFiltroChange(val) {
   else if (monitorCache.ambos !== null) renderAll(monitorCache);
 }
 
+const RESUMOS_MUNICIPIO = {
+  sinop: {
+    titulo: "Sinop — Maior município da região norte de MT",
+    texto: "Maior polo econômico do norte de Mato Grosso. O cruzamento cobre licitações da Prefeitura, Câmara, Previdência e demais órgãos do município para o período analisado. A taxa de publicação no PNCP é a mais alta entre os municípios monitorados."
+  },
+  lucas_do_rio_verde: {
+    titulo: "Lucas do Rio Verde — Destaque em agronegócio",
+    texto: "Um dos municípios de maior crescimento no estado, com forte base agroindustrial. O monitoramento inclui Prefeitura, Câmara, Previdência e SAAE. Apresenta boa cobertura de publicação no PNCP para o período analisado."
+  },
+  rondolandia: {
+    titulo: "Rondolândia — Município de pequeno porte no extremo norte",
+    texto: "Município com estrutura administrativa enxuta, composta por Prefeitura e Câmara Municipal. A maioria das licitações de 2025 não foi localizada no PNCP no período jan–abr, o que pode indicar publicação em período posterior ou pendência de envio ao portal federal."
+  },
+  acorizal: {
+    titulo: "Acorizal — Pequeno município na região metropolitana de Cuiabá",
+    texto: "Município de pequeno porte localizado próximo à capital. O volume de licitações é reduzido e concentrado em poucos órgãos. O cruzamento do período jan–abr 2025 apresentou cobertura parcial no PNCP."
+  },
+  jangada: {
+    titulo: "Jangada — Município da região metropolitana de Cuiabá",
+    texto: "Município próximo à capital com administração de pequeno porte. A maior parte das licitações de 2025 foi aberta a partir do segundo semestre, fora do período de coleta PNCP (jan–abr). Por isso, a maioria aparece apenas no APLIC."
+  }
+};
+
+function atualizarResumoMunicipio(key) {
+  const el = document.getElementById('resumo-municipio');
+  const titulo = document.getElementById('resumo-titulo');
+  const texto = document.getElementById('resumo-texto');
+  const info = RESUMOS_MUNICIPIO[key];
+  if (info) {
+    titulo.textContent = info.titulo;
+    texto.textContent = info.texto;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function changeMunicipio(key) {
   currentMunKey = key;
   const mun = MUNICIPIOS[key];
   const nome = mun ? mun.nome : slugToNome(key);
   document.getElementById('header-sub').textContent = `${nome} — MT · 2026`;
+  atualizarResumoMunicipio(key);
   const selMun = document.getElementById('filtro-municipio');
   if (selMun) selMun.value = key;
 
@@ -1447,6 +1579,7 @@ async function init() {
 
 // Inicializa quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
+  atualizarResumoMunicipio(currentMunKey);
   init();
 });
 </script>
