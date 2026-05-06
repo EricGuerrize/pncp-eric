@@ -76,7 +76,17 @@ async def run_pipeline(data_inicial: str = None, data_final: str = None):
                 # O Firebase_sync tentará puxar config.CREDENTIALS_PATH
                 # Passo 7A: Sincroniza dados normais PNCP primeiro
                 logger.info("=== STEP 7: Sincronizando PNCP (Base) no Firebase ===")
-                sincronizar(df, data_inicial)
+                MUNICIPIOS_ALVO = {
+                    "sinop", "lucas do rio verde", "rondolandia",
+                    "acorizal", "jangada",
+                }
+                col_mun = "unidadeOrgao_municipioNome"
+                if col_mun in df.columns:
+                    df_sync = df[df[col_mun].str.lower().str.strip().isin(MUNICIPIOS_ALVO)]
+                    logger.info(f"  Filtrado para {len(MUNICIPIOS_ALVO)} municípios: {len(df_sync)} registros")
+                else:
+                    df_sync = df
+                sincronizar(df_sync, data_inicial)
                 
                 # Passo 6: Verifica se há arquivos APLIC para cruzar
                 csv_files = list(config.INPUT_DIR.glob("*.csv")) + list(config.INPUT_DIR.glob("*.CSV"))
