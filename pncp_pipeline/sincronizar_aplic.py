@@ -164,7 +164,8 @@ def main():
         description="Extrai APLIC do Oracle e sincroniza com Firebase."
     )
     parser.add_argument(
-        "--cidades", nargs="+", required=True,
+        "--cidades", nargs="+",
+        default=["rondolandia", "acorizal", "jangada", "lucas do rio verde", "sinop"],
         help="Nomes dos municípios (ex: sinop rondolandia acorizal jangada 'lucas do rio verde')",
     )
     parser.add_argument(
