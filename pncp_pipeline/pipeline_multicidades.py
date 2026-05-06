@@ -251,7 +251,7 @@ def etapa_crossmatch(
 # Etapa 2b: Sync PNCP completo para Firebase (apenas_pncp de todos os municípios)
 # ---------------------------------------------------------------------------
 
-def etapa_sincronizar_pncp(pncp_excel: Path) -> dict:
+def etapa_sincronizar_pncp(pncp_excel: Path, cidades: list[str] | None = None) -> dict:
     """
     Lê o Excel PNCP completo de MT e popula o Firebase com TODAS as licitações
     em 'apenas_pncp' para todos os municípios presentes no arquivo.
@@ -261,7 +261,16 @@ def etapa_sincronizar_pncp(pncp_excel: Path) -> dict:
 
     logger.info(f"[Firebase] Sincronizando PNCP completo: {pncp_excel.name}")
     df_pncp = pd.read_excel(pncp_excel, dtype=str)
-    logger.info(f"  {len(df_pncp)} licitações carregadas do Excel PNCP")
+    
+    if cidades:
+        # Filtra apenas os municípios solicitados
+        cidades_upper = [c.upper() for c in cidades]
+        col_mun = "unidadeOrgao_municipioNome"
+        if col_mun in df_pncp.columns:
+            df_pncp = df_pncp[df_pncp[col_mun].str.upper().isin(cidades_upper)]
+            logger.info(f"  Filtrado para {len(cidades)} municípios: {len(df_pncp)} registros restantes")
+
+    logger.info(f"  {len(df_pncp)} licitações preparadas para sincronização")
 
     data_ref = pncp_excel.stem.split("_")[-1]  # ex: "20260423" do nome do arquivo
     stats = sincronizar(df_pncp, data_ref=data_ref)
@@ -321,8 +330,8 @@ def run(
 
     # ── Passo 2: Sync PNCP completo → Firebase (todos os municípios MT) ────────
     if pncp_path is not None and not skip_firebase and not skip_pncp_sync:
-        logger.info("Sincronizando PNCP completo com Firebase...")
-        etapa_sincronizar_pncp(pncp_path)
+        logger.info(f"Sincronizando PNCP (filtrado para as cidades alvo) com Firebase...")
+        etapa_sincronizar_pncp(pncp_path, cidades=cidades)
     elif pncp_path is None:
         logger.info("Sync PNCP pulado (sem Excel local — usando Firebase como fonte)")
     else:
