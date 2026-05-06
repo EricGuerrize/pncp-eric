@@ -46,6 +46,7 @@ def load_orgaos():
                     "cnpj": item["cnpj"],
                     "nome": item["nome"]
                 }
+            logger.info(f"Carregados {len(DE_PARA_UG_INFO)} órgãos de orgaos.json")
 
 load_orgaos()
 
@@ -175,18 +176,11 @@ def converter_valor_br(texto) -> float | None:
         return None
 
 
-def _normalizar_municipio(texto: str) -> str:
-    """Remove acentos e coloca em lowercase — sem aplicar stopwords de licitação."""
-    nfkd = unicodedata.normalize("NFKD", str(texto))
-    sem_acento = "".join(c for c in nfkd if not unicodedata.combining(c))
-    return sem_acento.lower().strip()
-
-
 def mapear_ug(cod_ug, municipio: str) -> dict | None:
     """Lookup no DE-PARA via (cod_ug, municipio_normalizado)."""
     if not cod_ug or str(cod_ug).strip() == '':
         return None
-    chave = (str(cod_ug).strip(), _normalizar_municipio(municipio))
+    chave = (str(cod_ug).strip(), normalizar_texto(municipio))
     return DE_PARA_UG_INFO.get(chave)
 
 
@@ -203,6 +197,8 @@ def mapear_modalidade_aplic_para_pncp(cod_mod: str) -> int | None:
 
 def preparar_pncp(df_pncp: pd.DataFrame) -> pd.DataFrame:
     """Prepara o DataFrame PNCP para o cruzamento."""
+    if df_pncp.empty:
+        return pd.DataFrame()
     df = df_pncp.copy()
 
     # Extrai número puro e ano do numeroCompra
@@ -245,13 +241,14 @@ def preparar_pncp(df_pncp: pd.DataFrame) -> pd.DataFrame:
 
 def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
     """Prepara o DataFrame APLIC para o cruzamento."""
+    if df_aplic.empty:
+        return pd.DataFrame()
     df = df_aplic.copy()
 
     # Forward-fill do Cód. UG (aparece apenas na primeira linha de cada grupo)
     col_ug = next((c for c in df.columns if 'ug' in c.lower() and ('cód' in c.lower() or 'cod' in c.lower())), None)
     if col_ug:
-        # Converte para string antes de substituir strings vazias e NaN numérico
-        df[col_ug] = df[col_ug].astype(str).replace({'': pd.NA, 'nan': pd.NA, 'None': pd.NA}).ffill()
+        df[col_ug] = df[col_ug].replace('', pd.NA).ffill()
 
     # Coluna de número da licitação
     col_numero = next(
@@ -606,6 +603,14 @@ def _merge_terciario(
     df_aplic_disp = df_aplic[~df_aplic.index.isin(already_matched_aplic)].copy()
     df_aplic_disp['_aplic_orig_idx'] = df_aplic_disp.index
 
+    # Garante tipos compatíveis para o merge
+    for col in ['_numero_puro', '_ano_extraido']:
+        df_pncp_rem[col] = pd.to_numeric(df_pncp_rem[col], errors='coerce')
+        df_aplic_disp[col] = pd.to_numeric(df_aplic_disp[col], errors='coerce')
+    
+    df_pncp_rem['modalidadeId'] = pd.to_numeric(df_pncp_rem['modalidadeId'], errors='coerce')
+    df_aplic_disp['_modalidade_pncp_id'] = pd.to_numeric(df_aplic_disp['_modalidade_pncp_id'], errors='coerce')
+
     merged = df_pncp_rem.merge(
         df_aplic_disp,
         left_on=['_municipio_norm', '_numero_puro', '_ano_extraido', 'modalidadeId'],
@@ -822,6 +827,9 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     logger.info("=" * 60)
     logger.info("INICIANDO CROSSMATCH PNCP × APLIC")
     logger.info(f"PNCP: {len(df_pncp)} registros | APLIC: {len(df_aplic)} registros")
+    
+    if df_pncp.empty and df_aplic.empty:
+        return pd.DataFrame(), {}
 
     # 1. Preparação
     df_p = preparar_pncp(df_pncp)
@@ -831,27 +839,32 @@ def crossmatch(df_pncp: pd.DataFrame, df_aplic: pd.DataFrame) -> pd.DataFrame:
     df_p = deduplicar_pncp(df_p)
     df_a, df_aplic_grupos = deduplicar_aplic(df_a)
 
-    # 3. Tier 1 — Semântico + Financeiro
-    matched_t1, pncp_orfaos, matched_aplic_t1 = _merge_primario(df_p, df_a)
+    # 3. Execução dos Tiers
+    matched_t1, matched_t2, matched_t3 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    all_matched_aplic = set()
+    df_pncp_final = pd.DataFrame()
 
-    # 4. Tier 2 — CNPJ + Data
-    matched_t2, remanescentes, matched_aplic_t2 = _merge_secundario(
-        pncp_orfaos, df_a, matched_aplic_t1
-    )
-
-    # 5. Tier 3 — Estrutural (fallback)
-    all_matched_aplic = matched_aplic_t1 | matched_aplic_t2
-    matched_t3, matched_aplic_t3 = _merge_terciario(remanescentes, df_a, all_matched_aplic)
-    all_matched_aplic |= matched_aplic_t3
-
-    # 6. Consolida lado PNCP
-    partes = [p for p in [matched_t1, matched_t2, matched_t3]
-              if isinstance(p, pd.DataFrame) and not p.empty]
-    if not partes:
-        logger.warning("Nenhum resultado após cruzamento.")
-        df_pncp_final = pd.DataFrame()
-    else:
-        df_pncp_final = pd.concat(partes, ignore_index=True)
+    if not df_p.empty and not df_a.empty:
+        matched_t1, pncp_orfaos, matched_aplic_t1 = _merge_primario(df_p, df_a)
+        
+        # 4. Tier 2 — CNPJ + Data
+        matched_t2, remanescentes, matched_aplic_t2 = _merge_secundario(
+            pncp_orfaos, df_a, matched_aplic_t1
+        )
+        
+        # 5. Tier 3 — Estrutural (fallback)
+        all_matched_aplic = matched_aplic_t1 | matched_aplic_t2
+        matched_t3, matched_aplic_t3 = _merge_terciario(remanescentes, df_a, all_matched_aplic)
+        all_matched_aplic |= matched_aplic_t3
+        
+        partes = [p for p in [matched_t1, matched_t2, matched_t3]
+                  if isinstance(p, pd.DataFrame) and not p.empty]
+        df_pncp_final = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame()
+    elif not df_p.empty:
+        # PNCP tem dados, APLIC não: tudo órfão
+        df_pncp_final = df_p.copy()
+        df_pncp_final['status_cruzamento'] = 'SEM_MATCH'
+        df_pncp_final['estrategia_match'] = 'pncp_sem_aplic'
 
     # 7. Enriquecimento + classificação
     if not df_pncp_final.empty:
@@ -1100,7 +1113,7 @@ if __name__ == "__main__":
         pd.DataFrame(linhas_resumo).to_excel(writer, sheet_name='Resumo', index=False)
 
         # Aba 5 — Grid unificado (dashboard de cobertura por sistema)
-        sinop_cnpjs = {v["cnpj"] for (_, mun), v in DE_PARA_UG_INFO.items() if mun == 'sinop'}
+        sinop_cnpjs = {v for (_, mun), v in DE_PARA_UG_CNPJ.items() if mun == 'sinop'}
         df_grid = _gerar_grid(df_resultado, sinop_cnpjs)
         df_grid.to_excel(writer, sheet_name='Grid', index=False)
 

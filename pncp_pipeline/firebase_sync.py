@@ -154,7 +154,7 @@ def _doc_pncp(row: pd.Series, municipio_slug: str) -> dict:
     if not data_pncp:
         data_pncp = datetime.utcnow()
 
-    prazo_aplic = _adicionar_dias_uteis(data_pncp, 5)
+    prazo_aplic = _adicionar_dias_uteis(data_pncp, 3)
     valor = _fval(row.get("valorTotalEstimado") or row.get("valorTotalHomologado"))
 
     return {
@@ -217,6 +217,9 @@ def sincronizar(df_pncp: pd.DataFrame, data_ref: str = "") -> dict:
     municipios_processados = 0
 
     for municipio_raw, df_mun in df_pncp.groupby(COL_MUNICIPIO):
+        if not municipio_raw or str(municipio_raw).strip() == "":
+            logger.warning("Pulando município vazio no PNCP.")
+            continue
         municipio_slug = _slug_municipio(str(municipio_raw))
 
         # Cria/atualiza documento pai para que o município apareça ao listar a coleção
@@ -325,7 +328,7 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
                 continue
 
             data_pncp   = _dt(row.get("dataPublicacaoPncp") or row.get("dataAberturaProposta"))
-            prazo_aplic = _adicionar_dias_uteis(data_pncp, 5) if data_pncp else None
+            prazo_aplic = _adicionar_dias_uteis(data_pncp, 3) if data_pncp else None
 
             doc_ambos = {
                 "municipio":        municipio_slug,
@@ -428,51 +431,6 @@ def carregar_pncp_municipio(municipio_slug: str) -> pd.DataFrame:
 
     df = pd.DataFrame(rows) if rows else pd.DataFrame()
     logger.info(f"[Firebase→PNCP] {municipio_slug}: {len(df)} registros carregados")
-    return df
-
-
-# ---------------------------------------------------------------------------
-# Carrega APLIC do Firestore → DataFrame compatível com crossmatch.py
-# ---------------------------------------------------------------------------
-
-SUB_APLIC_RAW = "aplic_raw"
-
-
-def carregar_aplic_municipio(municipio_slug: str) -> pd.DataFrame:
-    """
-    Lê registros da coleção aplic_raw de um município no Firestore e devolve
-    um DataFrame com as colunas brutas esperadas por crossmatch.preparar_aplic().
-
-    Populado pelo sincronizar_aplic.py rodado na máquina do TCE.
-    """
-    db = _inicializar_firebase()
-
-    def _parse_ts(val):
-        if val is None:
-            return None
-        if hasattr(val, "toDate"):
-            val = val.toDate()
-        if hasattr(val, "tzinfo") and val.tzinfo:
-            val = val.replace(tzinfo=None)
-        return val
-
-    rows = []
-    for doc in _sub(db, municipio_slug, SUB_APLIC_RAW).stream():
-        d = doc.to_dict()
-        rows.append({
-            "UG":           d.get("orgao", ""),
-            "Modalidade":   d.get("modalidade", ""),
-            "Nº Licitação": d.get("numero", ""),
-            "Exercício":    d.get("ano", ""),
-            "Objetivo":     d.get("objeto", ""),
-            "Valor Estimado": d.get("valor") or 0.0,
-            "_cnpj_mapeado":  d.get("cnpj", ""),
-            "Data Abertura":  _parse_ts(d.get("dataAPLIC")),
-            "municipio":      d.get("municipio", municipio_slug),
-        })
-
-    df = pd.DataFrame(rows) if rows else pd.DataFrame()
-    logger.info(f"[Firebase→APLIC] {municipio_slug}: {len(df)} registros carregados de aplic_raw")
     return df
 
 

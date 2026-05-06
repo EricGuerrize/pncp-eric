@@ -26,7 +26,7 @@ TAMANHO_PAGINA = 50
 # Concurrency & Retry Settings
 MAX_CONCURRENT_REQUESTS = 10
 MAX_RETRIES = 5
-REQUEST_TIMEOUT = 30  # seconds
+REQUEST_TIMEOUT = 60  # seconds
 
 # Mapping of Modalidades
 MODALIDADES = {

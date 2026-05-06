@@ -28,6 +28,8 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).parent))
 from oracle_connector import extrair_dados_oracle
+import database
+import crossmatch
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -319,9 +321,7 @@ def atualizar_orgaos_json(df_ugs: pd.DataFrame) -> None:
         if not ug or ug in ugs_existentes:
             continue
 
-        # Normaliza sem acento para bater com normalizar_texto() do crossmatch.py
-        municipio_raw = str(row.get("municipio", "")).strip()
-        municipio = _normalizar(municipio_raw).lower()
+        municipio = str(row.get("municipio", "")).strip().lower()
         cnpj      = re.sub(r"\D", "", str(row.get("cnpj", "") or ""))
         nome      = str(row.get("nome", "")).strip()
 
@@ -408,6 +408,14 @@ def run(cidades: list[str], ano: int, dry_run: bool = False) -> list[Path]:
     if df_aplic.empty:
         logger.warning("Extração APLIC retornou vazia. Verifique conexão Oracle e UG codes.")
         return []
+
+    # 4.5: Preparar e Salvar no SQLite
+    try:
+        logger.info("Limpando e preparando dados APLIC para o banco SQL...")
+        df_aplic_clean = crossmatch.preparar_aplic(df_aplic)
+        database.salvar_aplic(df_aplic_clean)
+    except Exception as db_ex:
+        logger.error(f"Erro ao salvar APLIC no banco SQL: {db_ex}")
 
     print(f"\n=== Extração APLIC: {len(df_aplic)} registros ===")
 

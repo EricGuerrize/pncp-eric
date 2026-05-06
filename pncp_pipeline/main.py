@@ -8,6 +8,7 @@ from collector import collect_all_data
 from normalizer import normalize_results
 from dataset_builder import build_dataset, clean_dataset
 from excel_exporter import export_to_excel
+import database
 
 # Setup basic logging config here so it runs when main is invoked
 logging.basicConfig(
@@ -58,6 +59,13 @@ async def run_pipeline(data_inicial: str = None, data_final: str = None):
         # Step 5: Export to Excel
         if not df.empty:
             export_to_excel(df, file_date)
+            
+            # Step 5.5: Save to SQLite
+            try:
+                database.salvar_pncp(df)
+            except Exception as db_ex:
+                logger.error(f"Erro ao salvar no banco SQL: {db_ex}")
+
             logger.info(f"Pipeline concluído com sucesso. {len(df)} registros processados.")
             
             # Step 6 & 7: Crossmatch Automático e Sincronização Firebase
@@ -87,6 +95,12 @@ async def run_pipeline(data_inicial: str = None, data_final: str = None):
                         
                         logger.info(f"=== STEP 7B: Sincronizando resultados do Cruzamento ({mun}) no Firebase ===")
                         sincronizar_crossmatch(df_cross, municipio=mun)
+
+                        # Step 7C: Salvar Crossmatch no SQLite
+                        try:
+                            database.salvar_crossmatch(df_cross, municipio=mun)
+                        except Exception as db_cross_ex:
+                            logger.error(f"Erro ao salvar crossmatch no banco SQL: {db_cross_ex}")
                     else:
                         logger.info(f"Nenhum resultado gerado para o cruzamento de {aplic_file.name}")
                         

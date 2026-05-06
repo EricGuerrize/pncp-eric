@@ -13,13 +13,13 @@ O objetivo é identificar:
 
 ## Municípios monitorados (MVP)
 
-| Município | PNCP | Crossmatch APLIC |
-|-----------|------|-----------------|
-| Lucas do Rio Verde | ✅ 89 licitações | ✅ 57 matches |
-| Sinop | ✅ 98 licitações | ✅ 48 matches |
-| Jangada | ✅ 8 licitações | ✅ 1 match |
-| Rondolândia | ✅ 1 licitação | ⏳ pendente |
-| Acorizal | ⚠️ 0 no PNCP | ⏳ pendente |
+| Município | PNCP | Crossmatch APLIC | Status Repopulação (Q1 2025) |
+|-----------|------|-----------------|-----------------------------|
+| Lucas do Rio Verde | ✅ 38 licitações | ✅ 90 registros | ✅ Sincronizado |
+| Sinop | ✅ 25 licitações | ✅ 111 registros | ✅ Sincronizado |
+| Jangada | ✅ 2 licitações | ⚠️ 0 registros | ✅ Sincronizado |
+| Rondolândia | ⚠️ 0 licitações | ✅ 160 registros | ✅ Sincronizado |
+| Acorizal | ✅ 1 licitação | ✅ 17 registros | ✅ Sincronizado |
 
 > O Firebase contém dados PNCP de **107 municípios de Mato Grosso** — qualquer um pode ser consultado no dashboard.
 
@@ -250,6 +250,29 @@ FIREBASE_CREDENTIALS_PATH=/caminho/para/firebase_credentials.json
 ```
 
 O `firebase_credentials.json` é a chave de conta de serviço do Firebase (não commitada no git).
+
+---
+
+---
+
+## Repopulação Histórica (Jan-Abr 2025)
+
+Em Maio de 2026, foi realizada uma carga massiva para restaurar e corrigir os dados do primeiro quadrimestre de 2025 para municípios selecionados.
+
+### Script `repopulate_municipality.py`
+Este script foi desenvolvido para permitir a limpeza e recarga controlada de um município por vez.
+- **Limpeza**: Remove todos os documentos das subcoleções do município no Firestore antes de enviar os novos dados.
+- **Filtro**: Aplica filtro de data (`2025-01-01` a `2025-04-30`) tanto para PNCP quanto para APLIC.
+- **Crossmatch**: Reconstrói o estado de "ambos" (matches) e "apenas_aplic" baseando-se nos resultados salvos localmente no SQLite.
+
+```bash
+python repopulate_municipality.py "Sinop"
+```
+
+### Desafios e Dificuldades
+1. **Acesso ao Banco de Dados**: O processo de repopulação exige que a máquina executora tenha acesso ao arquivo `monitor_pncp.db` (SQLite) contendo os resultados históricos do crossmatch e a extração bruta do Oracle.
+2. **Quota do Firebase**: A sincronização massiva de centenas de registros consome quotas de escrita do Google Cloud. O script implementa pausas (`time.sleep`) para evitar erros 429 (Too Many Requests).
+3. **Consistência de Datas**: Como os sistemas (PNCP e APLIC) podem ter datas de registro muito distantes, o filtro de data foi centralizado no período de "exercício" de interesse do usuário (Jan-Abr).
 
 ---
 
