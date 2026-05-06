@@ -417,8 +417,8 @@ def main():
     parser.add_argument(
         "--ano",
         type=int,
-        default=2026,
-        help="Exercício (padrão: 2026)",
+        default=2025,
+        help="Exercício (padrão: 2025)",
     )
     parser.add_argument(
         "--pncp-excel",
