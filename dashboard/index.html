@@ -448,7 +448,7 @@
   </div>
 </div>
 
-<!-- ── Resumo do município ──────────────────────────────────────────────── -->
+<!-- ── Resumo de dados do município ─────────────────────────────────────── -->
 <div id="resumo-municipio" style="
   margin: 0 32px 16px;
   background: #eef2fb;
@@ -457,10 +457,9 @@
   padding: 12px 18px;
   font-size: .83rem;
   color: #1a2a4a;
-  line-height: 1.55;
+  line-height: 1.6;
   display: none;
 ">
-  <strong id="resumo-titulo" style="font-size:.9rem;display:block;margin-bottom:4px;"></strong>
   <span id="resumo-texto"></span>
 </div>
 
@@ -1302,6 +1301,7 @@ function updateCards(data) {
   document.getElementById('badge-aplic').textContent  = fc.length;
   const alertas = fp.filter(d => d.alertaAtivo).length;
   document.getElementById('cnt-alertas').textContent = alertas;
+  atualizarResumoMunicipio(fa.length, fp.length, fc.length);
 }
 
 function renderAll(data) {
@@ -1408,41 +1408,28 @@ function onFiltroChange(val) {
   else if (monitorCache.ambos !== null) renderAll(monitorCache);
 }
 
-const RESUMOS_MUNICIPIO = {
-  sinop: {
-    titulo: "Sinop — Maior município da região norte de MT",
-    texto: "Maior polo econômico do norte de Mato Grosso. O cruzamento cobre licitações da Prefeitura, Câmara, Previdência e demais órgãos do município para o período analisado. A taxa de publicação no PNCP é a mais alta entre os municípios monitorados."
-  },
-  lucas_do_rio_verde: {
-    titulo: "Lucas do Rio Verde — Destaque em agronegócio",
-    texto: "Um dos municípios de maior crescimento no estado, com forte base agroindustrial. O monitoramento inclui Prefeitura, Câmara, Previdência e SAAE. Apresenta boa cobertura de publicação no PNCP para o período analisado."
-  },
-  rondolandia: {
-    titulo: "Rondolândia — Município de pequeno porte no extremo norte",
-    texto: "Município com estrutura administrativa enxuta, composta por Prefeitura e Câmara Municipal. A maioria das licitações de 2025 não foi localizada no PNCP no período jan–abr, o que pode indicar publicação em período posterior ou pendência de envio ao portal federal."
-  },
-  acorizal: {
-    titulo: "Acorizal — Pequeno município na região metropolitana de Cuiabá",
-    texto: "Município de pequeno porte localizado próximo à capital. O volume de licitações é reduzido e concentrado em poucos órgãos. O cruzamento do período jan–abr 2025 apresentou cobertura parcial no PNCP."
-  },
-  jangada: {
-    titulo: "Jangada — Município da região metropolitana de Cuiabá",
-    texto: "Município próximo à capital com administração de pequeno porte. A maior parte das licitações de 2025 foi aberta a partir do segundo semestre, fora do período de coleta PNCP (jan–abr). Por isso, a maioria aparece apenas no APLIC."
-  }
-};
-
-function atualizarResumoMunicipio(key) {
-  const el = document.getElementById('resumo-municipio');
-  const titulo = document.getElementById('resumo-titulo');
+function atualizarResumoMunicipio(ambos, apenas_pncp, apenas_aplic) {
+  const el    = document.getElementById('resumo-municipio');
   const texto = document.getElementById('resumo-texto');
-  const info = RESUMOS_MUNICIPIO[key];
-  if (info) {
-    titulo.textContent = info.titulo;
-    texto.textContent = info.texto;
-    el.style.display = 'block';
-  } else {
-    el.style.display = 'none';
-  }
+
+  const total    = ambos + apenas_pncp + apenas_aplic;
+  const cobertura = total > 0 ? Math.round((ambos / total) * 100) : 0;
+  const semPncp  = apenas_aplic;
+  const semAplic = apenas_pncp;
+
+  let avaliacao = '';
+  if (cobertura >= 60)      avaliacao = 'Boa cobertura entre os dois sistemas.';
+  else if (cobertura >= 30) avaliacao = 'Cobertura parcial — parte das licitações não está publicada nos dois sistemas.';
+  else                      avaliacao = 'Baixa cobertura — a maioria das licitações não aparece nos dois sistemas simultaneamente.';
+
+  texto.innerHTML =
+    `De <strong>${total}</strong> licitações identificadas no período: ` +
+    `<strong>${ambos}</strong> estão registradas nos dois sistemas (PNCP e APLIC), ` +
+    `<strong>${semPncp}</strong> constam apenas no APLIC sem publicação no PNCP, ` +
+    `e <strong>${semAplic}</strong> aparecem apenas no PNCP sem registro no APLIC. ` +
+    `Taxa de cruzamento: <strong>${cobertura}%</strong>. ${avaliacao}`;
+
+  el.style.display = total > 0 ? 'block' : 'none';
 }
 
 function changeMunicipio(key) {
@@ -1579,7 +1566,6 @@ async function init() {
 
 // Inicializa quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
-  atualizarResumoMunicipio(currentMunKey);
   init();
 });
 </script>
