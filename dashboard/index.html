@@ -185,8 +185,7 @@
       color: #1a3a6b;
     }
     .fonte-chip.analise { background: #d4edda; color: #155724; }
-    #btn-refresh {
-      margin-left: auto;
+    #btn-refresh, #btn-export {
       background: #1a3a6b;
       color: #fff;
       border: none;
@@ -196,7 +195,12 @@
       cursor: pointer;
       transition: background .15s;
     }
-    #btn-refresh:hover { background: #245093; }
+    #btn-refresh:hover, #btn-export:hover { background: #245093; }
+    #btn-export {
+      background: #28a745;
+      margin-left: 8px;
+    }
+    #btn-export:hover { background: #1e7e34; }
 
     /* ── Cards ───────────────────────────────────────────── */
     .cards {
@@ -421,7 +425,8 @@
     <option value="">Todos</option>
   </select>
   <span class="fonte-chip" id="fonte-chip">📡 Firebase</span>
-  <button id="btn-refresh" onclick="init()">↻ Atualizar</button>
+  <button id="btn-refresh" style="margin-left: auto;" onclick="init()">↻ Atualizar</button>
+  <button id="btn-export" onclick="exportCurrentTabToCSV()">📥 Exportar CSV</button>
 </div>
 
 <!-- ── Cards ───────────────────────────────────────────────────────────── -->
@@ -1543,6 +1548,94 @@ function onAnoChange(val) {
 
 function onMunicipioChange(key) {
   changeMunicipio(key);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTAÇÃO CSV
+// ═══════════════════════════════════════════════════════════════════════════
+
+function exportCurrentTabToCSV() {
+  let dataToExport = [];
+  const currentData = (viewSource === 'analise' && crossResult) 
+    ? {
+        ambos: crossResult.matched.map(m => ({
+          orgao: m.pncp._raw.unidadeOrgao?.nomeUnidade || m.pncp._raw.unidadeOrgao_nomeUnidade || '',
+          modalidade: m.pncp._raw.modalidadeNome || MODALIDADES[m.pncp._raw.modalidadeId] || '',
+          numero: m.pncp._raw.numeroCompra || '',
+          ano: String(m.pncp._raw.anoCompra || ''),
+          objeto: m.pncp._raw.objetoCompra || '',
+          valor: m.pncp._valor,
+          dataPNCP: m.pncp._data ? m.pncp._data.toLocaleDateString('pt-BR') : '',
+          dataAPLIC: m.aplic._data ? m.aplic._data.toLocaleDateString('pt-BR') : '',
+          score: m.score,
+          estrategia: m.status
+        })),
+        apenas_pncp: crossResult.apenas_pncp.map(p => ({
+          orgao: p._raw.unidadeOrgao?.nomeUnidade || p._raw.unidadeOrgao_nomeUnidade || '',
+          modalidade: p._raw.modalidadeNome || MODALIDADES[p._raw.modalidadeId] || '',
+          numero: p._raw.numeroCompra || '',
+          ano: String(p._raw.anoCompra || ''),
+          objeto: p._raw.objetoCompra || '',
+          valor: p._valor,
+          dataPNCP: p._data ? p._data.toLocaleDateString('pt-BR') : ''
+        })),
+        apenas_aplic: crossResult.apenas_aplic.map(a => ({
+          orgao: a._orgao_nome || '',
+          modalidade: MODALIDADES[a._mod_id] || '',
+          numero: a._numero || '',
+          ano: a._ano || '',
+          objeto: a._obj_raw || '',
+          valor: a._valor,
+          dataAPLIC: a._data ? a._data.toLocaleDateString('pt-BR') : ''
+        }))
+      }
+    : monitorCache;
+
+  if (!currentData || !currentData[abaAtiva]) {
+    alert('Nenhum dado disponível para exportar.');
+    return;
+  }
+
+  const rawDocs = applyFiltros(currentData[abaAtiva]);
+  
+  // Limpa os objetos para o CSV
+  const exportDocs = rawDocs.map(d => {
+    const clean = { ...d };
+    // Remove campos internos do Firebase ou do processamento
+    delete clean.id;
+    delete clean.municipio;
+    delete clean.criadoEm;
+    delete clean.atualizadoEm;
+    delete clean.alertaAtivo;
+    delete clean.score_cruzamento;
+    
+    // Formata datas para string se forem objetos do Firebase ou Date
+    if (clean.dataPNCP) clean.dataPNCP = fmtDate(clean.dataPNCP);
+    if (clean.dataAPLIC) clean.dataAPLIC = fmtDate(clean.dataAPLIC);
+    if (clean.prazoAplic) clean.prazoAplic = fmtDate(clean.prazoAplic);
+    
+    return clean;
+  });
+
+  if (exportDocs.length === 0) {
+    alert('Nenhum dado encontrado com os filtros atuais.');
+    return;
+  }
+
+  const csv = Papa.unparse(exportDocs, { delimiter: ";" });
+  const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  
+  const munNome = MUNICIPIOS[currentMunKey]?.nome || currentMunKey;
+  const filename = `monitor_pncp_${munNome.toLowerCase().replace(/\s/g,'_')}_${abaAtiva}_${new Date().toISOString().slice(0,10)}.csv`;
+  
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function togglePainel() {
