@@ -58,6 +58,7 @@ def _doc_aplic_raw(row: pd.Series, municipio_slug: str) -> dict:
         "municipio":  municipio_slug,
         "orgao":      str(row.get("_orgao_nome") or row.get("UG") or "")[:80],
         "modalidade": str(row.get("Modalidade") or "")[:60],
+        "mod_id":     str(row.get("_mod_id_raw") or ""),
         "numero":     str(row.get("_numero_puro") or row.get("Nº Licitação") or ""),
         "ano":        str(row.get("_ano_extraido") or row.get("Exercício") or ""),
         "objeto":     str(row.get("_objetivo_norm") or row.get("Objetivo") or row.get("Motivo") or "")[:300],
@@ -72,7 +73,8 @@ def _doc_id_aplic(row: pd.Series) -> str:
     cnpj   = re.sub(r"\D", "", str(row.get("cnpj") or "")).replace("/", "_")
     numero = str(row.get("numero") or "").replace("/", "_")
     ano    = str(row.get("ano") or "")
-    return f"{cnpj}-{numero}-{ano}" if cnpj else ""
+    mod    = str(row.get("mod_id") or "00")
+    return f"{cnpj}-{numero}-{ano}-{mod}" if cnpj else ""
 
 
 def upload_aplic_firebase(df_aplic_prep: pd.DataFrame, municipio_slug: str) -> int:

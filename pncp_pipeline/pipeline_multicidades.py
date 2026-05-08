@@ -138,7 +138,7 @@ def etapa_coletar_pncp(inicio: str, fim: str) -> Path | None:
     if result.returncode != 0:
         logger.error("Falha na coleta PNCP. Verifique main.py.")
         return None
-    # Retorna o Excel gerado (o mais recente em output/)
+    # Retorna o Excel gerado (o mais recente em output/ que contenha o ano solicitado se possível)
     candidates = sorted(OUTPUT_DIR.glob("pncp_contratacoes_MT_*.xlsx"), reverse=True)
     return candidates[0] if candidates else None
 
@@ -327,6 +327,20 @@ def run(
             "Excel PNCP não encontrado — PNCP será lido do Firebase por município. "
             "Use --pncp-excel ou --pncp-inicio/--pncp-fim para usar um arquivo local."
         )
+
+    # ── Passo 1.5: Descobrir o Excel PNCP correto para o ano ──────────────────
+    if pncp_path is None:
+        # Se não foi passado via --pncp-excel, tenta achar o mais recente do ano
+        candidates = sorted(OUTPUT_DIR.glob(f"pncp_contratacoes_MT_*{ano}*.xlsx"), reverse=True)
+        if not candidates:
+            # Fallback para qualquer um se não achar do ano
+            candidates = sorted(OUTPUT_DIR.glob("pncp_contratacoes_MT_*.xlsx"), reverse=True)
+        
+        if candidates:
+            pncp_path = candidates[0]
+            logger.info(f"Usando Excel PNCP detectado: {pncp_path.name}")
+        else:
+            logger.warning("Nenhum Excel PNCP encontrado em output/. O crossmatch tentará carregar do Firebase.")
 
     # ── Passo 2: Sync PNCP completo → Firebase (todos os municípios MT) ────────
     if pncp_path is not None and not skip_firebase and not skip_pncp_sync:

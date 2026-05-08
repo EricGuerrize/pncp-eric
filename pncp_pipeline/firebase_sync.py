@@ -106,10 +106,25 @@ def _dt(val):
 
 
 def _fval(val):
-    if not val or str(val).strip() in ("", "nan"):
+    if val is None or str(val).strip() in ("", "nan", "None"):
         return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    # String cleaning
+    s = str(val).replace("R$", "").strip()
+    
+    # Check if it already looks like a system float (has dot but no comma)
+    if "." in s and "," not in s:
+        try:
+            return float(s)
+        except:
+            pass
+            
+    # PT-BR format: "1.234,56" -> "1234.56"
+    s = s.replace(".", "").replace(",", ".")
     try:
-        return float(str(val).replace("R$", "").replace(".", "").replace(",", ".").strip())
+        return float(s)
     except (ValueError, TypeError):
         return None
 
@@ -185,12 +200,13 @@ def _doc_aplic(row: pd.Series, municipio_slug: str) -> dict:
         "modalidade":   str(row.get("Modalidade") or "")[:60],
         "numero":       str(row.get("_numero_puro") or row.get("Nº Licitação") or ""),
         "ano":          str(row.get("_ano_extraido") or row.get("Exercício") or ""),
-        "objeto":       str(row.get("_objetivo_norm") or row.get("Objetivo") or row.get("Motivo") or "")[:300],
-        "valor":        _fval(row.get("Valor Estimado")),
-        "cnpj":         str(row.get("_cnpj_mapeado") or ""),
+        "objeto":       str(row.get("_objetivo_norm") or row.get("Objetivo") or row.get("Motivo") or row.get("objeto") or "")[:300],
+        "valor":        _fval(row.get("Valor Estimado") or row.get("_valor_estimado_float") or row.get("valor")),
+        "cnpj":         str(row.get("_cnpj_mapeado") or row.get("cnpj") or ""),
         "dataAPLIC":    _dt(row.get("Data Abertura") or ""),
         "statusPNCP":   "N",
         "statusAPLIC":  "S",
+        "mod_id":       str(row.get("_mod_id_raw") or row.get("Cod. Modalidade") or "00"),
         "atualizadoEm": SERVER_TIMESTAMP,
     }
 
@@ -332,6 +348,7 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
 
             doc_ambos = {
                 "municipio":        municipio_slug,
+                "numeroControlePNCP": str(row.get("numeroControlePNCP") or row.get("id_pncp") or ""),
                 "orgao":            str(row.get("unidadeOrgao_nomeUnidade") or "")[:80],
                 "modalidade":       str(row.get("modalidadeNome") or "")[:60],
                 "numero":           str(row.get("numeroCompra") or ""),
@@ -344,9 +361,9 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
                 "statusPNCP":       "S",
                 "orgao_aplic":      str(row.get("UG") or row.get("_orgao_nome") or "")[:80],
                 "numero_aplic":     str(row.get("Nº Licitação") or ""),
-                "objeto_aplic":     str(row.get("Objetivo") or row.get("Motivo") or row.get("_objetivo_norm") or "")[:300],
-                "valor_aplic":      _fval(row.get("Valor Estimado")),
-                "dataAPLIC":        _dt(row.get("Data Abertura")),
+                "objeto_aplic":     str(row.get("Objetivo") or row.get("Motivo") or row.get("_objetivo_norm") or row.get("objeto_aplic") or "")[:300],
+                "valor_aplic":      _fval(row.get("Valor Estimado") or row.get("_valor_estimado_float") or row.get("valor_aplic") or row.get("valor")),
+                "dataAPLIC":        _dt(row.get("Data Abertura") or row.get("data_abertura")),
                 "statusAPLIC":      "S",
                 "alertaAtivo":      False,
                 "score_cruzamento": str(row.get("score_composto") or ""),
@@ -368,11 +385,14 @@ def sincronizar_crossmatch(df_crossmatch: pd.DataFrame, municipio: str = "sinop"
             numero = (_clean(row.get("_numero_puro")) or _clean(row.get("Nº Licitação"))).replace("/", "_")
             ano    = _clean(row.get("_ano_extraido")) or _clean(row.get("Exercício"))
 
+            mod    = _clean(row.get("_mod_id_raw")) or _clean(row.get("Cod. Modalidade")) or "00"
+            mod    = mod.zfill(2)
+
             # Fallback: se cnpj ainda vazio, monta ID por número+ano
             if cnpj:
-                doc_id = f"{cnpj}-{numero}-{ano}"
+                doc_id = f"{cnpj}-{numero}-{ano}-{mod}"
             elif numero:
-                doc_id = f"noncnpj-{numero}-{ano}"
+                doc_id = f"noncnpj-{numero}-{ano}-{mod}"
             else:
                 continue
 

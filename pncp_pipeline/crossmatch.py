@@ -66,6 +66,8 @@ MAPA_MODALIDADE_APLIC_PARA_PNCP: dict[str, int] = {
     "06": 10,  # Manifestação de Interesse
     "07": 11,  # Pré-qualificação
     "14": 13,  # Leilão Presencial
+    "55": 5,   # Concorrência Presencial (Obra)
+    "41": 8,   # Dispensa de Licitação (OSC)
 }
 
 LIMIAR_MATCH_CONFIRMADO = 85
@@ -212,6 +214,10 @@ def preparar_pncp(df_pncp: pd.DataFrame) -> pd.DataFrame:
         df.loc[mask_sem_ano, '_ano_extraido'] = pd.to_numeric(
             df.loc[mask_sem_ano, 'anoCompra'], errors='coerce'
         )
+    
+    # Padroniza tipos para evitar falha no groupby (float64 vs int64)
+    df['_numero_puro'] = df['_numero_puro'].astype(str).str.replace(r'\.0$', '', regex=True)
+    df['_ano_extraido'] = df['_ano_extraido'].astype(str).str.replace(r'\.0$', '', regex=True)
 
     # Normaliza município e objeto
     df['_municipio_norm'] = df['unidadeOrgao_municipioNome'].apply(normalizar_texto)
@@ -271,6 +277,10 @@ def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
             df.loc[mask_sem_ano, col_exercicio], errors='coerce'
         )
 
+    # Padroniza tipos para evitar falha no groupby (float64 vs int64)
+    df['_numero_puro'] = df['_numero_puro'].astype(str).str.replace(r'\.0$', '', regex=True)
+    df['_ano_extraido'] = df['_ano_extraido'].astype(str).str.replace(r'\.0$', '', regex=True)
+
     # Mapeia UG → CNPJ
     # Prefere coluna "Município" pura, evita "Cód. município"
     col_municipio = next(
@@ -295,11 +305,13 @@ def preparar_aplic(df_aplic: pd.DataFrame) -> pd.DataFrame:
     # Mapeia modalidade → float64 para join sem problemas de tipo
     col_modalidade = next((c for c in df.columns if 'modalidade' in c.lower() and 'cod' in c.lower()), None)
     if col_modalidade:
+        df['_mod_id_raw'] = df[col_modalidade].astype(str).str.strip().str.zfill(2)
         df['_modalidade_pncp_id'] = pd.to_numeric(
-            df[col_modalidade].astype(str).apply(mapear_modalidade_aplic_para_pncp),
+            df['_mod_id_raw'].apply(mapear_modalidade_aplic_para_pncp),
             errors='coerce'
         ).astype('float64')
     else:
+        df['_mod_id_raw'] = "00"
         df['_modalidade_pncp_id'] = pd.NA
         logger.warning("Coluna Cod. Modalidade não encontrada no APLIC.")
 
@@ -387,7 +399,8 @@ def deduplicar_aplic(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     antes = len(df)
     # CNPJ obrigatório na chave: UGs distintas (Câmara, Prefeitura, Previsinop)
     # têm numeração sequencial independente — nº 001/2026 da Câmara ≠ nº 001/2026 da Prefeitura.
-    chave = ['_cnpj_mapeado', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id']
+    # Incluímos _mod_id_raw para diferenciar processos com mesmo número mas modalidades distintas.
+    chave = ['_cnpj_mapeado', '_numero_puro', '_ano_extraido', '_modalidade_pncp_id', '_mod_id_raw']
     chave_existente = [c for c in chave if c in df.columns]
 
     if not chave_existente:

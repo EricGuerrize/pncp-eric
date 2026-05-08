@@ -522,7 +522,7 @@ const MODALIDADES = {
 // Modalidade APLIC (2 dígitos) → id PNCP
 const MODAL_APLIC_PNCP = {
   '08':8,'09':9,'13':6,'15':12,'56':5,'01':4,'02':2,'03':3,
-  '04':1,'05':7,'06':10,'07':11,'14':13
+  '04':1,'05':7,'06':10,'07':11,'14':13, '55':5, '41':8
 };
 
 const MUNICIPIOS = {
@@ -916,6 +916,7 @@ function processAplic(rows) {
       _numero:      numero,
       _ano:         ano,
       _mod_id:      MODAL_APLIC_PNCP[String(modCod).padStart(2,'0')] || null,
+      _mod_raw:     String(modCod).padStart(2,'0'),
       _obj_norm:    normalizeText(obj || motivo),
       _obj_raw:     obj || motivo,
       _data:        parseDate(dataRaw),
@@ -1130,6 +1131,7 @@ function renderFromCross() {
     cnpj:       a._cnpj || '',
     dataAPLIC:  a._data,
     statusPNCP: 'N', statusAPLIC: 'S',
+    mod_id:     a._mod_raw || '00',
     municipio:  currentMunKey
   }));
 
@@ -1215,7 +1217,7 @@ async function saveToFirebase() {
 
     // Salva apenas_aplic
     for (const a of crossResult.apenas_aplic) {
-      const docId = `${a._cnpj||'sem'}-${a._numero||'0'}-${a._ano||'0'}`;
+      const docId = `${a._cnpj||'sem'}-${a._numero||'0'}-${a._ano||'0'}-${a.mod_id||'00'}`;
       const doc = {
         municipio:   currentMunKey,
         orgao:       String(a._orgao_nome || '').slice(0,80),

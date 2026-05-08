@@ -25,6 +25,7 @@ interface Licitacao {
   statusAPLIC: string;
   alertaAtivo?: boolean;
   score_cruzamento?: string;
+  numeroControlePNCP?: string;
 }
 
 interface KPIValue {
@@ -39,6 +40,7 @@ export default function Dashboard() {
   
   const [data, setData] = useState<Licitacao[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Stats
   const [kpis, setKpis] = useState<{
@@ -185,26 +187,37 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Space-efficient Tabs */}
-        <div className="bg-white rounded-t-lg border-b border-slate-200 px-4 pt-3 flex gap-2 overflow-x-auto">
-          <TabButton 
-            active={activeTab === 'ambos'} 
-            onClick={() => setActiveTab('ambos')}
-            label="Sincronizados"
-            count={kpis.ambos.count}
-          />
-          <TabButton 
-            active={activeTab === 'apenas_pncp'} 
-            onClick={() => setActiveTab('apenas_pncp')}
-            label="Apenas PNCP"
-            count={kpis.pncp.count}
-          />
-          <TabButton 
-            active={activeTab === 'apenas_aplic'} 
-            onClick={() => setActiveTab('apenas_aplic')}
-            label="Apenas APLIC"
-            count={kpis.aplic.count}
-          />
+        {/* Space-efficient Tabs & Search */}
+        <div className="bg-white rounded-t-lg border-b border-slate-200 px-4 pt-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex gap-2 overflow-x-auto">
+            <TabButton 
+              active={activeTab === 'ambos'} 
+              onClick={() => setActiveTab('ambos')}
+              label="Sincronizados"
+              count={kpis.ambos.count}
+            />
+            <TabButton 
+              active={activeTab === 'apenas_pncp'} 
+              onClick={() => setActiveTab('apenas_pncp')}
+              label="Apenas PNCP"
+              count={kpis.pncp.count}
+            />
+            <TabButton 
+              active={activeTab === 'apenas_aplic'} 
+              onClick={() => setActiveTab('apenas_aplic')}
+              label="Apenas APLIC"
+              count={kpis.aplic.count}
+            />
+          </div>
+          <div className="pb-2 w-full md:w-1/3">
+            <input 
+              type="text" 
+              placeholder="Buscar (órgão, objeto, valor > X)..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+            />
+          </div>
         </div>
 
         {/* Data Table */}
@@ -214,56 +227,100 @@ export default function Dashboard() {
               <RefreshCw className="w-8 h-8 animate-spin mb-3 text-primary-500" />
               <p>Sincronizando com Firestore...</p>
             </div>
-          ) : data.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <p>Nenhuma licitação encontrada nesta categoria.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                  <tr>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Número/Ano</th>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Órgão</th>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Modalidade</th>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase w-1/3">Objeto</th>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase text-right">Valor Estimado</th>
-                    <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {data.map((item) => (
-                    <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${item.alertaAtivo ? 'bg-rose-50/50' : ''}`}>
-                      <td className="py-3 px-4 font-mono text-xs">{item.numero}/{item.ano}</td>
-                      <td className="py-3 px-4 font-medium text-slate-700 truncate max-w-[200px]" title={item.orgao}>{item.orgao}</td>
-                      <td className="py-3 px-4 text-slate-600">{item.modalidade}</td>
-                      <td className="py-3 px-4">
-                        <div className="truncate max-w-[300px] text-slate-600" title={item.objeto}>
-                          {item.objeto}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right font-medium text-slate-700">
-                        {formatCurrency(item.valor)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-col gap-1 items-start">
-                          <StatusBadge type={activeTab} />
-                          {item.alertaAtivo && (
-                            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">
-                              <AlertTriangle className="w-3 h-3" /> Vencido
-                            </span>
-                          )}
-                          {item.score_cruzamento && (
-                            <span className="text-[10px] text-slate-500" title="Score Semântico">Score: {item.score_cruzamento}</span>
-                          )}
-                        </div>
-                      </td>
+          ) : (() => {
+            const lowerSearch = searchTerm.toLowerCase();
+            const searchValMatch = searchTerm.match(/>\s*([\d.,]+)/);
+            const minValor = searchValMatch ? parseFloat(searchValMatch[1].replace(/\./g, '').replace(',', '.')) : null;
+
+            const filteredData = data.filter(item => {
+              if (!searchTerm) return true;
+              
+              if (minValor !== null && item.valor !== null) {
+                return item.valor >= minValor;
+              }
+
+              const isNumericExact = !isNaN(parseFloat(searchTerm.replace(',', '.')));
+              const searchVal = isNumericExact ? parseFloat(searchTerm.replace(',', '.')) : null;
+
+              if (searchVal !== null && item.valor !== null && item.valor === searchVal) {
+                return true;
+              }
+
+              return (
+                (item.objeto && item.objeto.toLowerCase().includes(lowerSearch)) ||
+                (item.orgao && item.orgao.toLowerCase().includes(lowerSearch)) ||
+                (item.numero && item.numero.toLowerCase().includes(lowerSearch)) ||
+                (item.ano && item.ano.includes(lowerSearch)) ||
+                (item.modalidade && item.modalidade.toLowerCase().includes(lowerSearch))
+              );
+            });
+
+            if (filteredData.length === 0) {
+              return (
+                <div className="p-12 text-center text-slate-400">
+                  <p>Nenhuma licitação encontrada{searchTerm ? ` para a busca "${searchTerm}"` : ''}.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Número/Ano</th>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Órgão</th>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Modalidade</th>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase w-1/3">Objeto</th>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase text-right">Valor Estimado</th>
+                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredData.map((item) => (
+                      <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${item.alertaAtivo ? 'bg-rose-50/50' : ''}`}>
+                        <td className="py-3 px-4 font-mono text-xs">{item.numero}/{item.ano}</td>
+                        <td className="py-3 px-4 font-medium text-slate-700 truncate max-w-[200px]" title={item.orgao}>{item.orgao}</td>
+                        <td className="py-3 px-4 text-slate-600">{item.modalidade}</td>
+                        <td className="py-3 px-4">
+                          <div className="truncate max-w-[300px]" title={item.objeto}>
+                            {item.numeroControlePNCP ? (
+                              <a 
+                                href={`https://pncp.gov.br/app/editais?id=${item.numeroControlePNCP}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
+                              >
+                                {item.objeto}
+                              </a>
+                            ) : (
+                              <span className="text-slate-600">{item.objeto}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-slate-700">
+                          {formatCurrency(item.valor)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            <StatusBadge type={activeTab} />
+                            {item.alertaAtivo && (
+                              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">
+                                <AlertTriangle className="w-3 h-3" /> Vencido
+                              </span>
+                            )}
+                            {item.score_cruzamento && (
+                              <span className="text-[10px] text-slate-500" title="Score Semântico">Score: {item.score_cruzamento}</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       </main>
     </div>
