@@ -635,6 +635,15 @@ function sub(name) {
 
 function cleanCnpj(s) { return (s||'').replace(/\D/g,''); }
 
+function normalizeLooseText(txt) {
+  return String(txt || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
 function normalizeText(txt) {
   if (!txt) return '';
   txt = txt.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -1478,6 +1487,48 @@ function slugToNome(slug) {
   return slug.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
+function getMunicipioOrgaoByCnpj(cnpj) {
+  const clean = cleanCnpj(cnpj);
+  if (!clean) return null;
+  return MUNICIPIOS[currentMunKey]?.orgaos.find(o => cleanCnpj(o.cnpj) === clean) || null;
+}
+
+function getOrgaoFilterOption(doc) {
+  const cnpj = cleanCnpj(doc?.cnpj || '');
+  const knownOrgao = getMunicipioOrgaoByCnpj(cnpj);
+  if (knownOrgao) {
+    return { value: `cnpj:${cnpj}`, label: knownOrgao.nome };
+  }
+
+  const rawName = String(doc?.orgao || '').trim();
+  if (!rawName) return null;
+
+  return {
+    value: `nome:${normalizeLooseText(rawName)}`,
+    label: rawName
+  };
+}
+
+function matchesOrgaoFiltro(doc) {
+  if (!orgaoFiltro) return true;
+
+  if (orgaoFiltro.startsWith('cnpj:')) {
+    const targetCnpj = orgaoFiltro.slice(5);
+    const docCnpj = cleanCnpj(doc?.cnpj || '');
+    if (docCnpj) return docCnpj === targetCnpj;
+
+    const knownOrgao = getMunicipioOrgaoByCnpj(targetCnpj);
+    const docName = normalizeLooseText(doc?.orgao || '');
+    return !!knownOrgao && docName.includes(normalizeLooseText(knownOrgao.nome));
+  }
+
+  if (orgaoFiltro.startsWith('nome:')) {
+    return normalizeLooseText(doc?.orgao || '').includes(orgaoFiltro.slice(5));
+  }
+
+  return (doc?.orgao || '').toLowerCase().includes(orgaoFiltro.toLowerCase());
+}
+
 async function loadMunicipios() {
   try {
     const snap = await db.collection('municipios').orderBy('nome').get();
@@ -1514,7 +1565,7 @@ function updateOrgaoFilter() {
   const mun = MUNICIPIOS[currentMunKey];
   if (mun) {
     sel.innerHTML = '<option value="">Todos</option>' +
-      mun.orgaos.map(o => `<option value="${o.nome}">${o.nome}</option>`).join('');
+      mun.orgaos.map(o => `<option value="cnpj:${cleanCnpj(o.cnpj)}">${o.nome}</option>`).join('');
   } else {
     sel.innerHTML = '<option value="">Todos</option>';
   }
@@ -1527,22 +1578,25 @@ function updateAnoFilterFromData(data) {
 }
 
 function updateOrgaoFilterFromData(data) {
-  const orgaos = new Set();
+  const orgaos = new Map();
   const docs = applyFiltros(
     [...(data.ambos||[]), ...(data.apenas_pncp||[]), ...(data.apenas_aplic||[])],
     { ignoreOrgao: true }
   );
-  docs.forEach(d => { if (d.orgao) orgaos.add(d.orgao); });
+  docs.forEach(d => {
+    const option = getOrgaoFilterOption(d);
+    if (option) orgaos.set(option.value, option.label);
+  });
   const sel = document.getElementById('filtro-orgao');
-  const sorted = Array.from(orgaos).sort();
+  const sorted = Array.from(orgaos.entries()).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  if (orgaoFiltro && !orgaos.has(orgaoFiltro)) orgaoFiltro = '';
   sel.innerHTML = '<option value="">Todos</option>' +
-    sorted.map(o => `<option value="${o}"${o === orgaoFiltro ? ' selected' : ''}>${o}</option>`).join('');
+    sorted.map(([value, label]) => `<option value="${value}"${value === orgaoFiltro ? ' selected' : ''}>${label}</option>`).join('');
 }
 
 function applyFiltros(docs, opts = {}) {
   return docs.filter(d => {
-    if (!opts.ignoreOrgao && orgaoFiltro &&
-        !(d.orgao||'').toLowerCase().includes(orgaoFiltro.toLowerCase())) return false;
+    if (!opts.ignoreOrgao && !matchesOrgaoFiltro(d)) return false;
     if (filtroAno && String(d.ano||'') !== filtroAno) return false;
     return true;
   });
