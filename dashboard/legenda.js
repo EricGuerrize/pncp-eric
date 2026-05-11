@@ -25,7 +25,7 @@
           </tr>
           <tr>
             <td style="padding:5px 8px;border-left:4px solid #ffc107;padding-left:10px;font-weight:600">Apenas PNCP</td>
-            <td style="padding:5px 8px">Publicada no PNCP mas ainda <strong>não encontrada no APLIC</strong>. O município tem 3 dias úteis para enviar.</td>
+            <td style="padding:5px 8px">Publicada no PNCP mas ainda <strong>não encontrada no APLIC</strong>. O município tem 5 dias úteis para enviar.</td>
           </tr>
           <tr>
             <td style="padding:5px 8px;border-left:4px solid #fd7e14;padding-left:10px;font-weight:600">Apenas APLIC</td>
@@ -33,7 +33,7 @@
           </tr>
           <tr>
             <td style="padding:5px 8px;border-left:4px solid #dc3545;padding-left:10px;font-weight:600">Alertas Ativos</td>
-            <td style="padding:5px 8px">Licitações em "Apenas PNCP" cujo prazo de 3 dias úteis <strong>já venceu</strong> sem APLIC registrado.</td>
+            <td style="padding:5px 8px">Licitações em "Apenas PNCP" cujo prazo de 5 dias úteis <strong>já venceu</strong> sem APLIC registrado.</td>
           </tr>
         </table>
       </div>
@@ -70,7 +70,7 @@
         <h3 style="font-size:.88rem;color:#1a3a6b;margin-bottom:8px;font-weight:600">🏛️ Os dois sistemas monitorados</h3>
         <ul style="padding-left:18px;margin:0">
           <li style="margin-bottom:6px"><strong>PNCP</strong> — portal federal onde órgãos públicos publicam licitações. Dados coletados automaticamente via API.</li>
-          <li style="margin-bottom:6px"><strong>APLIC</strong> (TCE-MT) — sistema Oracle interno. Municípios devem enviar em até <strong>3 dias úteis</strong> após publicar no PNCP. Dados inseridos via exportação manual do Oracle.</li>
+          <li style="margin-bottom:6px"><strong>APLIC</strong> (TCE-MT) — sistema Oracle interno. Municípios devem enviar em até <strong>5 dias úteis</strong> após publicar no PNCP. Dados inseridos via exportação manual do Oracle.</li>
         </ul>
         <p style="margin-top:10px;color:#888;font-size:.78rem">Órgãos monitorados: Prefeitura Municipal de Sinop · Câmara Municipal de Sinop · IPREV Sinop</p>
       </div>

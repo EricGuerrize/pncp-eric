@@ -185,6 +185,12 @@
       color: #1a3a6b;
     }
     .fonte-chip.analise { background: #d4edda; color: #155724; }
+    .toolbar-periodo {
+      font-size: .74rem;
+      color: #5c6475;
+      font-weight: 500;
+      white-space: nowrap;
+    }
     #btn-refresh, #btn-export {
       background: #1a3a6b;
       color: #fff;
@@ -425,6 +431,7 @@
     <option value="">Todos</option>
   </select>
   <span class="fonte-chip" id="fonte-chip">📡 Firebase</span>
+  <span class="toolbar-periodo">Dados de 2025 (janeiro a abril)</span>
   <button id="btn-refresh" style="margin-left: auto;" onclick="init()">↻ Atualizar</button>
   <button id="btn-export" onclick="exportCurrentTabToCSV()">📥 Exportar CSV</button>
 </div>
