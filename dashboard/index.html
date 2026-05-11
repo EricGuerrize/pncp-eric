@@ -398,14 +398,14 @@
     /* ── Advanced View ─────────────────────────────────────── */
     .advanced-shell {
       margin: 18px 32px 36px;
-      padding: 24px;
-      border-radius: 26px;
+      border-radius: 30px;
       background:
-        radial-gradient(circle at top right, rgba(100,170,255,.26), transparent 30%),
-        radial-gradient(circle at bottom left, rgba(63,218,164,.18), transparent 24%),
-        linear-gradient(145deg, #0f1c34 0%, #16294d 42%, #203b6f 100%);
+        radial-gradient(circle at top right, rgba(115,169,255,.22), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(62,214,176,.12), transparent 24%),
+        linear-gradient(180deg, #13223d 0%, #0f1b31 40%, #0b1528 100%);
       color: #eef4ff;
-      box-shadow: 0 28px 80px rgba(15,28,52,.26);
+      box-shadow: 0 32px 90px rgba(7,16,31,.34);
+      border: 1px solid rgba(142,173,229,.14);
       position: relative;
       overflow: hidden;
     }
@@ -414,165 +414,241 @@
       position: absolute;
       inset: 0;
       background:
-        linear-gradient(120deg, rgba(255,255,255,.05), transparent 35%),
-        repeating-linear-gradient(135deg, rgba(255,255,255,.03) 0 1px, transparent 1px 14px);
+        linear-gradient(120deg, rgba(255,255,255,.05), transparent 30%),
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 22%);
       pointer-events: none;
     }
-    .advanced-shell > * { position: relative; z-index: 1; }
+    .advanced-shell::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,.02) 0 1px, transparent 1px 72px),
+        repeating-linear-gradient(180deg, rgba(255,255,255,.018) 0 1px, transparent 1px 72px);
+      opacity: .35;
+      pointer-events: none;
+      mix-blend-mode: soft-light;
+    }
+    .advanced-shell > * {
+      position: relative;
+      z-index: 1;
+    }
+    .advanced-panel-top {
+      padding: 28px 28px 18px;
+      display: grid;
+      gap: 14px;
+      border-bottom: 1px solid rgba(159,186,234,.12);
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
+    }
     .advanced-hero {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 18px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) auto;
+      gap: 22px;
+      align-items: start;
+    }
+    .advanced-hero-copy {
+      min-width: 0;
     }
     .advanced-eyebrow {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-size: .72rem;
+      font-size: .7rem;
       text-transform: uppercase;
       letter-spacing: .18em;
       font-weight: 700;
-      color: rgba(220,234,255,.72);
-      margin-bottom: 10px;
+      color: rgba(220,234,255,.66);
+      margin-bottom: 12px;
     }
     .advanced-title {
-      font-size: 2rem;
-      line-height: 1.05;
+      font-size: 2.08rem;
+      line-height: 1.02;
       margin-bottom: 10px;
-      max-width: 580px;
+      max-width: 620px;
+      letter-spacing: -.03em;
     }
     .advanced-subtitle {
-      max-width: 680px;
-      color: rgba(235,242,255,.76);
-      line-height: 1.6;
-      font-size: .92rem;
+      max-width: 720px;
+      color: rgba(235,242,255,.74);
+      line-height: 1.65;
+      font-size: .9rem;
     }
     .advanced-chip-row {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
       justify-content: flex-end;
+      align-content: flex-start;
+      max-width: 430px;
     }
     .advanced-chip {
       display: inline-flex;
       align-items: center;
-      padding: 8px 12px;
+      min-height: 38px;
+      padding: 8px 13px;
       border-radius: 999px;
-      background: rgba(255,255,255,.12);
-      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(8,16,32,.42);
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
       color: #f6f9ff;
-      font-size: .76rem;
+      font-size: .74rem;
       font-weight: 600;
       backdrop-filter: blur(14px);
+      white-space: nowrap;
     }
     .advanced-chip.analise {
-      background: rgba(40,167,69,.18);
-      border-color: rgba(145,228,162,.28);
+      background: rgba(18,78,47,.42);
+      border-color: rgba(145,228,162,.24);
       color: #dcffe5;
     }
     .advanced-kpi-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 16px;
-    }
-    .advanced-kpi {
-      padding: 18px;
-      border-radius: 22px;
-      background: rgba(255,255,255,.11);
-      border: 1px solid rgba(255,255,255,.14);
-      backdrop-filter: blur(14px);
-      min-height: 144px;
-      display: flex;
-      flex-direction: column;
       gap: 10px;
     }
+    .advanced-kpi {
+      position: relative;
+      padding: 15px 16px 14px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(10,19,37,.8), rgba(11,21,41,.42));
+      border: 1px solid rgba(146,177,228,.12);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+      min-height: 124px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .advanced-kpi::after {
+      content: '';
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 0;
+      height: 3px;
+      border-radius: 999px;
+      opacity: .85;
+    }
+    .advanced-kpi:nth-child(1)::after { background: linear-gradient(90deg, #67f0c3, #46b6ff); }
+    .advanced-kpi:nth-child(2)::after { background: linear-gradient(90deg, #ffd468, #ff8a5b); }
+    .advanced-kpi:nth-child(3)::after { background: linear-gradient(90deg, #ffba7d, #ff7d6b); }
+    .advanced-kpi:nth-child(4)::after { background: linear-gradient(90deg, #ff8ba6, #ff607f); }
     .advanced-kpi-label {
-      font-size: .72rem;
+      font-size: .66rem;
       text-transform: uppercase;
-      letter-spacing: .12em;
-      color: rgba(232,240,255,.68);
+      letter-spacing: .16em;
+      color: rgba(232,240,255,.6);
       font-weight: 700;
     }
     .advanced-kpi-count {
-      font-size: 2rem;
+      font-size: 1.82rem;
       font-weight: 700;
       line-height: 1;
+      letter-spacing: -.03em;
     }
     .advanced-kpi-total {
-      font-size: .92rem;
+      font-size: .8rem;
       color: rgba(238,244,255,.82);
       font-weight: 600;
     }
     .advanced-kpi-note {
-      font-size: .74rem;
-      color: rgba(232,240,255,.62);
+      font-size: .72rem;
+      color: rgba(232,240,255,.58);
       line-height: 1.45;
     }
     .advanced-summary-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
+      grid-template-columns: 1.05fr 1fr 1fr;
+      gap: 10px;
     }
     .advanced-summary-card {
-      padding: 16px 18px;
+      padding: 14px 16px;
       border-radius: 18px;
-      background: rgba(9,15,30,.22);
+      background: rgba(8,15,29,.44);
       border: 1px solid rgba(255,255,255,.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
     }
     .advanced-summary-label {
-      font-size: .72rem;
+      font-size: .68rem;
       text-transform: uppercase;
-      letter-spacing: .12em;
-      color: rgba(220,234,255,.6);
+      letter-spacing: .15em;
+      color: rgba(220,234,255,.58);
       font-weight: 700;
       margin-bottom: 8px;
     }
     .advanced-summary-value {
-      font-size: 1.35rem;
+      font-size: 1.1rem;
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
+      letter-spacing: -.02em;
     }
     .advanced-summary-text {
-      font-size: .8rem;
+      font-size: .77rem;
       color: rgba(232,240,255,.7);
-      line-height: 1.5;
+      line-height: 1.55;
     }
     .advanced-results-shell {
-      padding: 18px;
-      border-radius: 24px;
-      background: rgba(255,255,255,.08);
-      border: 1px solid rgba(255,255,255,.12);
+      padding: 22px 26px 24px;
+      display: grid;
+      gap: 16px;
+      background: linear-gradient(180deg, rgba(6,11,22,.16), rgba(8,14,27,.34));
+    }
+    .advanced-results-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .advanced-section-kicker {
+      font-size: .66rem;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      color: rgba(219,232,255,.58);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .advanced-section-title {
+      font-size: 1.12rem;
+      line-height: 1.2;
+      letter-spacing: -.02em;
+    }
+    .advanced-section-meta {
+      max-width: 430px;
+      font-size: .78rem;
+      line-height: 1.55;
+      text-align: right;
+      color: rgba(223,235,255,.66);
     }
     .advanced-tab-nav {
-      display: flex;
-      gap: 10px;
+      display: inline-flex;
+      gap: 6px;
       flex-wrap: wrap;
-      margin-bottom: 16px;
+      padding: 6px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.09);
+      width: fit-content;
     }
     .advanced-tab-btn {
       border: none;
-      background: rgba(255,255,255,.12);
-      color: rgba(238,244,255,.8);
-      border-radius: 999px;
-      padding: 10px 14px;
-      font-size: .82rem;
-      font-weight: 600;
+      background: transparent;
+      color: rgba(238,244,255,.76);
+      border-radius: 14px;
+      padding: 10px 16px;
+      font-size: .8rem;
+      font-weight: 700;
       cursor: pointer;
-      transition: transform .18s, background .18s, color .18s;
+      transition: transform .18s, background .18s, color .18s, box-shadow .18s;
     }
     .advanced-tab-btn:hover {
-      background: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.1);
       transform: translateY(-1px);
     }
     .advanced-tab-btn.active {
-      background: #fff;
-      color: #16294d;
-      box-shadow: 0 16px 32px rgba(12,18,32,.16);
+      background: linear-gradient(135deg, #eff4ff 0%, #bfd4ff 100%);
+      color: #11203a;
+      box-shadow: 0 14px 28px rgba(0,0,0,.22);
     }
     .advanced-tab-btn .badge {
       display: inline-flex;
@@ -582,107 +658,187 @@
       padding: 2px 7px;
       margin-left: 8px;
       border-radius: 999px;
-      background: rgba(22,41,77,.1);
-      font-size: .7rem;
+      background: rgba(17,32,58,.1);
+      font-size: .68rem;
       font-weight: 700;
     }
     .advanced-results {
-      min-height: 220px;
-      padding: 4px;
+      min-height: 260px;
+      padding-top: 2px;
     }
     .advanced-list {
       display: grid;
-      gap: 14px;
+      gap: 12px;
     }
     .advanced-entry {
-      background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
-      border: 1px solid #e0e6f2;
-      border-radius: 20px;
-      padding: 18px 20px;
-      color: #16203a;
-      box-shadow: 0 16px 36px rgba(15,28,52,.08);
+      position: relative;
+      border-radius: 22px;
+      padding: 18px 18px 16px 22px;
+      background: linear-gradient(180deg, rgba(8,15,29,.92), rgba(11,20,38,.74));
+      border: 1px solid rgba(138,166,217,.12);
+      color: #eef4ff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 22px 42px rgba(1,4,13,.2);
+      overflow: hidden;
+    }
+    .advanced-entry::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+    }
+    .advanced-entry.advanced-entry-ambos::before {
+      background: linear-gradient(180deg, #67f0c3 0%, #48b8ff 100%);
+    }
+    .advanced-entry.advanced-entry-apenas_pncp::before {
+      background: linear-gradient(180deg, #ffd468 0%, #ff6b6b 100%);
+    }
+    .advanced-entry.advanced-entry-apenas_aplic::before {
+      background: linear-gradient(180deg, #ffbf7d 0%, #ff8a52 100%);
     }
     .advanced-entry.alerta {
-      border-color: #f1b4bb;
-      box-shadow: 0 16px 36px rgba(220,53,69,.12);
+      border-color: rgba(255,107,107,.24);
+      background: linear-gradient(180deg, rgba(35,11,23,.92), rgba(27,11,25,.82));
     }
     .advanced-entry-head {
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
       align-items: flex-start;
       margin-bottom: 12px;
+    }
+    .advanced-entry-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-wrap: wrap;
+      margin-bottom: 10px;
     }
     .advanced-status {
       display: inline-flex;
       align-items: center;
-      padding: 5px 10px;
+      padding: 6px 10px;
       border-radius: 999px;
-      font-size: .68rem;
+      font-size: .64rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .08em;
+      letter-spacing: .12em;
+      border: 1px solid transparent;
     }
-    .advanced-status.ok { background: #daf5e3; color: #15653b; }
-    .advanced-status.warn { background: #fff0c5; color: #8b6300; }
-    .advanced-status.danger { background: #ffe0e4; color: #9c2037; }
-    .advanced-status.neutral { background: #ffe7d2; color: #9a4d00; }
+    .advanced-status.ok {
+      background: rgba(72,197,149,.14);
+      color: #bff9de;
+      border-color: rgba(72,197,149,.24);
+    }
+    .advanced-status.warn {
+      background: rgba(255,208,90,.14);
+      color: #ffe2a6;
+      border-color: rgba(255,208,90,.22);
+    }
+    .advanced-status.danger {
+      background: rgba(255,114,142,.14);
+      color: #ffc2cf;
+      border-color: rgba(255,114,142,.22);
+    }
+    .advanced-status.neutral {
+      background: rgba(255,177,96,.14);
+      color: #ffd5b0;
+      border-color: rgba(255,177,96,.22);
+    }
     .advanced-entry-code {
-      font-size: .82rem;
+      font-size: .71rem;
       font-weight: 700;
-      color: #41506f;
-      margin-top: 8px;
+      color: rgba(214,226,255,.66);
+      letter-spacing: .1em;
+      text-transform: uppercase;
     }
     .advanced-entry-value {
-      font-size: 1.15rem;
+      font-size: 1rem;
       font-weight: 700;
-      color: #16294d;
+      color: #f7fbff;
       white-space: nowrap;
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
     }
     .advanced-entry-title {
-      font-size: 1rem;
-      line-height: 1.45;
-      color: #1d2a47;
-      margin-bottom: 14px;
+      font-size: .96rem;
+      line-height: 1.58;
+      color: #f4f8ff;
+      margin-bottom: 12px;
+      max-width: 1000px;
     }
     .advanced-entry-title a {
       color: inherit;
       text-decoration: none;
     }
     .advanced-entry-title a:hover { text-decoration: underline; }
+    .advanced-entry-signals {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .advanced-signal {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.08);
+      color: rgba(229,239,255,.76);
+      font-size: .7rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
     .advanced-entry-meta {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
     }
     .advanced-meta-item {
       padding: 12px 13px;
-      border-radius: 14px;
-      background: #f4f7fd;
-      border: 1px solid #e4ebf6;
+      border-radius: 16px;
+      background: rgba(255,255,255,.045);
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
     }
     .advanced-meta-item span {
       display: block;
-      font-size: .68rem;
+      font-size: .62rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #6c7a96;
-      margin-bottom: 6px;
+      letter-spacing: .12em;
+      color: rgba(202,218,247,.58);
+      margin-bottom: 7px;
     }
     .advanced-meta-item strong {
       display: block;
-      font-size: .84rem;
-      line-height: 1.45;
-      color: #1b2642;
+      font-size: .81rem;
+      line-height: 1.5;
+      color: #f3f7ff;
     }
 
-    @media (max-width: 1080px) {
+    @media (max-width: 1180px) {
       .advanced-kpi-grid,
       .advanced-summary-grid,
       .advanced-entry-meta {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 960px) {
+      .advanced-hero {
+        grid-template-columns: 1fr;
+      }
+      .advanced-chip-row,
+      .advanced-section-meta {
+        justify-content: flex-start;
+        text-align: left;
+        max-width: none;
       }
     }
     @media (max-width: 768px) {
@@ -691,16 +847,29 @@
       .view-switch-btn { flex: 1; }
       .advanced-shell {
         margin: 16px;
-        padding: 18px;
-        border-radius: 22px;
+        border-radius: 24px;
       }
-      .advanced-title { font-size: 1.65rem; }
+      .advanced-panel-top,
+      .advanced-results-shell {
+        padding: 18px;
+      }
+      .advanced-title { font-size: 1.68rem; }
       .advanced-kpi-grid,
       .advanced-summary-grid,
-      .advanced-entry-meta {
+      .advanced-entry-meta,
+      .advanced-entry-head {
         grid-template-columns: 1fr;
       }
-      .advanced-results-shell { padding: 14px; }
+      .advanced-tab-nav {
+        width: 100%;
+      }
+      .advanced-tab-btn {
+        flex: 1 1 100%;
+        text-align: left;
+      }
+      .advanced-entry-value {
+        white-space: normal;
+      }
     }
   </style>
 </head>
@@ -856,67 +1025,78 @@
 
 <div class="dashboard-view" id="view-avancada">
   <section class="advanced-shell">
-    <div class="advanced-hero">
-      <div>
+    <div class="advanced-panel-top">
+      <div class="advanced-hero">
+        <div class="advanced-hero-copy">
         <div class="advanced-eyebrow">Painel avançado</div>
         <h2 class="advanced-title" id="advanced-title">Leitura avançada das inconsistências do município</h2>
         <p class="advanced-subtitle" id="advanced-subtitle">
           Visualização analítica inspirada na interface moderna solicitada, mantendo os mesmos dados de Firebase/crossmatch da visão clássica.
         </p>
+        </div>
+        <div class="advanced-chip-row">
+          <span class="advanced-chip" id="advanced-chip-municipio">Município: —</span>
+          <span class="advanced-chip" id="advanced-chip-fonte">Fonte: Firebase</span>
+          <span class="advanced-chip" id="advanced-chip-orgao">Filtro: Todos</span>
+        </div>
       </div>
-      <div class="advanced-chip-row">
-        <span class="advanced-chip" id="advanced-chip-municipio">Município: —</span>
-        <span class="advanced-chip" id="advanced-chip-fonte">Fonte: Firebase</span>
-        <span class="advanced-chip" id="advanced-chip-orgao">Órgão: Todos</span>
-      </div>
-    </div>
 
-    <div class="advanced-kpi-grid">
-      <div class="advanced-kpi">
-        <div class="advanced-kpi-label">Cruzadas</div>
-        <div class="advanced-kpi-count" id="adv-cnt-ambos">—</div>
-        <div class="advanced-kpi-total" id="adv-total-ambos">—</div>
-        <div class="advanced-kpi-note">Casos com evidência nos dois sistemas.</div>
+      <div class="advanced-kpi-grid">
+        <div class="advanced-kpi">
+          <div class="advanced-kpi-label">Cruzadas</div>
+          <div class="advanced-kpi-count" id="adv-cnt-ambos">—</div>
+          <div class="advanced-kpi-total" id="adv-total-ambos">—</div>
+          <div class="advanced-kpi-note">Casos com evidência simultânea em PNCP e APLIC.</div>
+        </div>
+        <div class="advanced-kpi">
+          <div class="advanced-kpi-label">Gap no APLIC</div>
+          <div class="advanced-kpi-count" id="adv-cnt-pncp">—</div>
+          <div class="advanced-kpi-total" id="adv-total-pncp">—</div>
+          <div class="advanced-kpi-note">Publicações já expostas no PNCP, sem reflexo no APLIC.</div>
+        </div>
+        <div class="advanced-kpi">
+          <div class="advanced-kpi-label">Gap no PNCP</div>
+          <div class="advanced-kpi-count" id="adv-cnt-aplic">—</div>
+          <div class="advanced-kpi-total" id="adv-total-aplic">—</div>
+          <div class="advanced-kpi-note">Registros do APLIC ainda sem publicação correspondente no portal nacional.</div>
+        </div>
+        <div class="advanced-kpi">
+          <div class="advanced-kpi-label">Prazo vencido</div>
+          <div class="advanced-kpi-count" id="adv-cnt-alertas">—</div>
+          <div class="advanced-kpi-total" id="adv-total-alertas">Risco operacional</div>
+          <div class="advanced-kpi-note">Pendências do PNCP que já extrapolaram a janela esperada de registro.</div>
+        </div>
       </div>
-      <div class="advanced-kpi">
-        <div class="advanced-kpi-label">Gap no APLIC</div>
-        <div class="advanced-kpi-count" id="adv-cnt-pncp">—</div>
-        <div class="advanced-kpi-total" id="adv-total-pncp">—</div>
-        <div class="advanced-kpi-note">Publicadas no PNCP e ainda ausentes no APLIC.</div>
-      </div>
-      <div class="advanced-kpi">
-        <div class="advanced-kpi-label">Gap no PNCP</div>
-        <div class="advanced-kpi-count" id="adv-cnt-aplic">—</div>
-        <div class="advanced-kpi-total" id="adv-total-aplic">—</div>
-        <div class="advanced-kpi-note">Presentes no APLIC, mas sem reflexo no portal nacional.</div>
-      </div>
-      <div class="advanced-kpi">
-        <div class="advanced-kpi-label">Prazo vencido</div>
-        <div class="advanced-kpi-count" id="adv-cnt-alertas">—</div>
-        <div class="advanced-kpi-total" id="adv-total-alertas">Risco operacional</div>
-        <div class="advanced-kpi-note">Itens PNCP que já extrapolaram a janela esperada para registro no APLIC.</div>
-      </div>
-    </div>
 
-    <div class="advanced-summary-grid">
-      <div class="advanced-summary-card">
-        <div class="advanced-summary-label">Taxa de cruzamento</div>
-        <div class="advanced-summary-value" id="adv-cobertura">—</div>
-        <div class="advanced-summary-text" id="adv-cobertura-texto">Aguardando dados.</div>
-      </div>
-      <div class="advanced-summary-card">
-        <div class="advanced-summary-label">Leitura executiva</div>
-        <div class="advanced-summary-value" id="adv-total-geral">—</div>
-        <div class="advanced-summary-text" id="adv-resumo-executivo">Aguardando dados.</div>
-      </div>
-      <div class="advanced-summary-card">
-        <div class="advanced-summary-label">Filtro ativo</div>
-        <div class="advanced-summary-value" id="adv-filtro-ativo">Todos os órgãos</div>
-        <div class="advanced-summary-text" id="adv-filtro-texto">Sem recorte adicional aplicado.</div>
+      <div class="advanced-summary-grid">
+        <div class="advanced-summary-card">
+          <div class="advanced-summary-label">Taxa de cruzamento</div>
+          <div class="advanced-summary-value" id="adv-cobertura">—</div>
+          <div class="advanced-summary-text" id="adv-cobertura-texto">Aguardando dados.</div>
+        </div>
+        <div class="advanced-summary-card">
+          <div class="advanced-summary-label">Leitura executiva</div>
+          <div class="advanced-summary-value" id="adv-total-geral">—</div>
+          <div class="advanced-summary-text" id="adv-resumo-executivo">Aguardando dados.</div>
+        </div>
+        <div class="advanced-summary-card">
+          <div class="advanced-summary-label">Filtro ativo</div>
+          <div class="advanced-summary-value" id="adv-filtro-ativo">Todos os órgãos</div>
+          <div class="advanced-summary-text" id="adv-filtro-texto">Sem recorte adicional aplicado.</div>
+        </div>
       </div>
     </div>
 
     <div class="advanced-results-shell">
+      <div class="advanced-results-head">
+        <div>
+          <div class="advanced-section-kicker">Segmentos internos</div>
+          <h3 class="advanced-section-title" id="adv-section-title">Registros detalhados</h3>
+        </div>
+        <div class="advanced-section-meta" id="adv-section-meta">
+          Os mesmos dados da visão clássica, reorganizados em uma leitura executiva contínua para priorização operacional.
+        </div>
+      </div>
       <nav class="advanced-tab-nav">
         <button class="advanced-tab-btn active" data-tab="ambos" onclick="switchTab('ambos')">
           Nos dois sistemas <span class="badge" id="adv-badge-ambos">—</span>
@@ -1760,6 +1940,25 @@ function getResumoAvaliacao(cobertura) {
   return 'Baixa cobertura, com forte concentração de gaps.';
 }
 
+function getAdvancedSectionCopy(type, filtered) {
+  if (type === 'ambos') {
+    return {
+      title: 'Cruzamentos confirmados',
+      meta: `${filtered.ambos.length} registros com evidência nos dois sistemas, úteis para leitura de aderência entre PNCP e APLIC.`
+    };
+  }
+  if (type === 'apenas_pncp') {
+    return {
+      title: 'Pendências de registro no APLIC',
+      meta: `${filtered.apenas_pncp.length} registros publicados no PNCP e ${filtered.alertas} já em situação crítica de prazo.`
+    };
+  }
+  return {
+    title: 'Pendências de publicação no PNCP',
+    meta: `${filtered.apenas_aplic.length} registros presentes no APLIC sem reflexo correspondente no portal nacional.`
+  };
+}
+
 function getFilteredBuckets(data) {
   const filtered = {
     ambos: applyFiltros(data.ambos || []),
@@ -1816,10 +2015,10 @@ function updateCards(data) {
   document.getElementById('advanced-chip-municipio').textContent = `Município: ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}`;
   document.getElementById('advanced-chip-fonte').textContent = `Fonte: ${viewSource === 'analise' ? 'Análise local' : 'Firebase'}`;
   document.getElementById('advanced-chip-fonte').className = `advanced-chip${viewSource === 'analise' ? ' analise' : ''}`;
-  document.getElementById('advanced-chip-orgao').textContent = `Órgão: ${orgaoFiltro ? getOrgaoFiltroLabel() : 'Todos'}`;
-  document.getElementById('advanced-title').textContent = `Leitura avançada de ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}`;
+  document.getElementById('advanced-chip-orgao').textContent = `Filtro: ${orgaoFiltro ? getOrgaoFiltroLabel() : 'Todos'}`;
+  document.getElementById('advanced-title').textContent = `Painel executivo de ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}`;
   document.getElementById('advanced-subtitle').textContent =
-    `A mesma base da visão clássica, reorganizada para leitura executiva rápida de cobertura, inconsistências e prioridade operacional em ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}.`;
+    `Uma leitura analítica contínua da mesma base da visão clássica, com hierarquia visual concentrada em cobertura, lacunas de publicação e prioridade operacional para ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}.`;
 
   atualizarResumoMunicipio(filtered.ambos.length, filtered.apenas_pncp.length, filtered.apenas_aplic.length);
 }
@@ -1848,6 +2047,11 @@ function renderAdvanced(data) {
   const filtered = getFilteredBuckets(data);
   const container = document.getElementById('advanced-results-container');
   if (!container) return;
+  const sectionCopy = getAdvancedSectionCopy(abaAtiva, filtered);
+  const sectionTitle = document.getElementById('adv-section-title');
+  const sectionMeta = document.getElementById('adv-section-meta');
+  if (sectionTitle) sectionTitle.textContent = sectionCopy.title;
+  if (sectionMeta) sectionMeta.textContent = sectionCopy.meta;
 
   let html = '';
   if (abaAtiva === 'ambos') html = renderAdvancedEntries(filtered.ambos, 'ambos');
@@ -1939,12 +2143,31 @@ function getAdvancedStatus(type, doc) {
   return { label: 'Sem PNCP', cls: 'neutral' };
 }
 
+function renderAdvancedSignals(type, doc) {
+  const signals = [];
+  if (doc.modalidade) signals.push(`Modalidade: ${escapeHtml(doc.modalidade)}`);
+  if (type === 'ambos') {
+    signals.push(`Score: ${doc.score_cruzamento || '—'}`);
+    signals.push(`PNCP: ${fmtDate(doc.dataPNCP)}`);
+    signals.push(`APLIC: ${fmtDate(doc.dataAPLIC)}`);
+  } else if (type === 'apenas_pncp') {
+    signals.push(`PNCP: ${fmtDate(doc.dataPNCP)}`);
+    signals.push(`Prazo APLIC: ${fmtDate(doc.prazoAplic)}`);
+    signals.push(doc.alertaAtivo ? 'Criticidade: alta' : 'Criticidade: monitorar');
+  } else {
+    signals.push(`APLIC: ${fmtDate(doc.dataAPLIC)}`);
+    signals.push(`CNPJ: ${escapeHtml(doc.cnpj || '—')}`);
+    signals.push('Status: sem reflexo no PNCP');
+  }
+  return signals.map(text => `<span class="advanced-signal">${text}</span>`).join('');
+}
+
 function renderAdvancedMeta(type, doc) {
   if (type === 'ambos') {
     return `
-      <div class="advanced-meta-item"><span>Órgão</span><strong>${escapeHtml(doc.orgao || '—')}</strong></div>
-      <div class="advanced-meta-item"><span>Data PNCP</span><strong>${fmtDate(doc.dataPNCP)}</strong></div>
-      <div class="advanced-meta-item"><span>Data APLIC</span><strong>${fmtDate(doc.dataAPLIC)}</strong></div>
+      <div class="advanced-meta-item"><span>Órgão PNCP</span><strong>${escapeHtml(doc.orgao || '—')}</strong></div>
+      <div class="advanced-meta-item"><span>Órgão APLIC</span><strong>${escapeHtml(doc.orgao_aplic || '—')}</strong></div>
+      <div class="advanced-meta-item"><span>Janela de datas</span><strong>PNCP ${fmtDate(doc.dataPNCP)} · APLIC ${fmtDate(doc.dataAPLIC)}</strong></div>
       <div class="advanced-meta-item"><span>Score / Match</span><strong>${doc.score_cruzamento || '—'} · ${escapeHtml(doc.estrategia_match || '—')}</strong></div>
     `;
   }
@@ -1972,15 +2195,20 @@ function renderAdvancedEntries(docs, type) {
   const rows = docs.map(doc => {
     const status = getAdvancedStatus(type, doc);
     return `
-      <article class="advanced-entry ${doc.alertaAtivo ? 'alerta' : ''}">
+      <article class="advanced-entry advanced-entry-${type} ${doc.alertaAtivo ? 'alerta' : ''}">
         <div class="advanced-entry-head">
           <div>
-            <span class="advanced-status ${status.cls}">${status.label}</span>
-            <div class="advanced-entry-code">${escapeHtml(doc.numero || '—')}/${escapeHtml(doc.ano || '—')} · ${escapeHtml(doc.modalidade || '—')}</div>
+            <div class="advanced-entry-status-row">
+              <span class="advanced-status ${status.cls}">${status.label}</span>
+            </div>
+            <div class="advanced-entry-code">${escapeHtml(doc.numero || '—')}/${escapeHtml(doc.ano || '—')}</div>
           </div>
           <div class="advanced-entry-value">${fmtValor(doc.valor)}</div>
         </div>
         <div class="advanced-entry-title">${escapeHtml(doc.objeto || 'Sem objeto informado')}</div>
+        <div class="advanced-entry-signals">
+          ${renderAdvancedSignals(type, doc)}
+        </div>
         <div class="advanced-entry-meta">
           ${renderAdvancedMeta(type, doc)}
         </div>
