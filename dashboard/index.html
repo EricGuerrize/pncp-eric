@@ -27,8 +27,25 @@
     }
     header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: .3px; }
     header .sub { font-size: .78rem; opacity: .75; margin-top: 2px; }
-    .header-right { display: flex; align-items: center; gap: 20px; }
+    .header-right { display: flex; align-items: center; gap: 14px; }
     #ultima-atualizacao { font-size: .75rem; opacity: .65; text-align: right; white-space: nowrap; }
+    .header-view-btn {
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.1);
+      color: #fff;
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: .78rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .18s, transform .18s, border-color .18s;
+      white-space: nowrap;
+    }
+    .header-view-btn:hover {
+      background: rgba(255,255,255,.18);
+      border-color: rgba(255,255,255,.32);
+      transform: translateY(-1px);
+    }
 
     /* ── Painel de Análise ────────────────────────────────── */
     .painel {
@@ -191,6 +208,32 @@
       font-weight: 500;
       white-space: nowrap;
     }
+    .view-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background: #e8edf5;
+      border-radius: 999px;
+      border: 1px solid #d7ddeb;
+    }
+    .view-switch-btn {
+      border: none;
+      background: transparent;
+      color: #53617d;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: .78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .18s, color .18s, transform .18s;
+    }
+    .view-switch-btn:hover { color: #1a3a6b; }
+    .view-switch-btn.active {
+      background: linear-gradient(135deg, #1a3a6b, #2a5aa6);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(26,58,107,.24);
+    }
     #btn-refresh, #btn-export {
       background: #1a3a6b;
       color: #fff;
@@ -348,6 +391,317 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .obj-cell { max-width: 300px; }
     .obj-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+    .dashboard-view { display: none; }
+    .dashboard-view.active { display: block; }
+
+    /* ── Advanced View ─────────────────────────────────────── */
+    .advanced-shell {
+      margin: 18px 32px 36px;
+      padding: 24px;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at top right, rgba(100,170,255,.26), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(63,218,164,.18), transparent 24%),
+        linear-gradient(145deg, #0f1c34 0%, #16294d 42%, #203b6f 100%);
+      color: #eef4ff;
+      box-shadow: 0 28px 80px rgba(15,28,52,.26);
+      position: relative;
+      overflow: hidden;
+    }
+    .advanced-shell::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(255,255,255,.05), transparent 35%),
+        repeating-linear-gradient(135deg, rgba(255,255,255,.03) 0 1px, transparent 1px 14px);
+      pointer-events: none;
+    }
+    .advanced-shell > * { position: relative; z-index: 1; }
+    .advanced-hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .advanced-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      font-weight: 700;
+      color: rgba(220,234,255,.72);
+      margin-bottom: 10px;
+    }
+    .advanced-title {
+      font-size: 2rem;
+      line-height: 1.05;
+      margin-bottom: 10px;
+      max-width: 580px;
+    }
+    .advanced-subtitle {
+      max-width: 680px;
+      color: rgba(235,242,255,.76);
+      line-height: 1.6;
+      font-size: .92rem;
+    }
+    .advanced-chip-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .advanced-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.14);
+      color: #f6f9ff;
+      font-size: .76rem;
+      font-weight: 600;
+      backdrop-filter: blur(14px);
+    }
+    .advanced-chip.analise {
+      background: rgba(40,167,69,.18);
+      border-color: rgba(145,228,162,.28);
+      color: #dcffe5;
+    }
+    .advanced-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .advanced-kpi {
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.11);
+      border: 1px solid rgba(255,255,255,.14);
+      backdrop-filter: blur(14px);
+      min-height: 144px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .advanced-kpi-label {
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: rgba(232,240,255,.68);
+      font-weight: 700;
+    }
+    .advanced-kpi-count {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .advanced-kpi-total {
+      font-size: .92rem;
+      color: rgba(238,244,255,.82);
+      font-weight: 600;
+    }
+    .advanced-kpi-note {
+      font-size: .74rem;
+      color: rgba(232,240,255,.62);
+      line-height: 1.45;
+    }
+    .advanced-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .advanced-summary-card {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(9,15,30,.22);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .advanced-summary-label {
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: rgba(220,234,255,.6);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .advanced-summary-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .advanced-summary-text {
+      font-size: .8rem;
+      color: rgba(232,240,255,.7);
+      line-height: 1.5;
+    }
+    .advanced-results-shell {
+      padding: 18px;
+      border-radius: 24px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
+    }
+    .advanced-tab-nav {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .advanced-tab-btn {
+      border: none;
+      background: rgba(255,255,255,.12);
+      color: rgba(238,244,255,.8);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform .18s, background .18s, color .18s;
+    }
+    .advanced-tab-btn:hover {
+      background: rgba(255,255,255,.18);
+      transform: translateY(-1px);
+    }
+    .advanced-tab-btn.active {
+      background: #fff;
+      color: #16294d;
+      box-shadow: 0 16px 32px rgba(12,18,32,.16);
+    }
+    .advanced-tab-btn .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      padding: 2px 7px;
+      margin-left: 8px;
+      border-radius: 999px;
+      background: rgba(22,41,77,.1);
+      font-size: .7rem;
+      font-weight: 700;
+    }
+    .advanced-results {
+      min-height: 220px;
+      padding: 4px;
+    }
+    .advanced-list {
+      display: grid;
+      gap: 14px;
+    }
+    .advanced-entry {
+      background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
+      border: 1px solid #e0e6f2;
+      border-radius: 20px;
+      padding: 18px 20px;
+      color: #16203a;
+      box-shadow: 0 16px 36px rgba(15,28,52,.08);
+    }
+    .advanced-entry.alerta {
+      border-color: #f1b4bb;
+      box-shadow: 0 16px 36px rgba(220,53,69,.12);
+    }
+    .advanced-entry-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .advanced-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .advanced-status.ok { background: #daf5e3; color: #15653b; }
+    .advanced-status.warn { background: #fff0c5; color: #8b6300; }
+    .advanced-status.danger { background: #ffe0e4; color: #9c2037; }
+    .advanced-status.neutral { background: #ffe7d2; color: #9a4d00; }
+    .advanced-entry-code {
+      font-size: .82rem;
+      font-weight: 700;
+      color: #41506f;
+      margin-top: 8px;
+    }
+    .advanced-entry-value {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #16294d;
+      white-space: nowrap;
+    }
+    .advanced-entry-title {
+      font-size: 1rem;
+      line-height: 1.45;
+      color: #1d2a47;
+      margin-bottom: 14px;
+    }
+    .advanced-entry-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .advanced-entry-title a:hover { text-decoration: underline; }
+    .advanced-entry-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .advanced-meta-item {
+      padding: 12px 13px;
+      border-radius: 14px;
+      background: #f4f7fd;
+      border: 1px solid #e4ebf6;
+    }
+    .advanced-meta-item span {
+      display: block;
+      font-size: .68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #6c7a96;
+      margin-bottom: 6px;
+    }
+    .advanced-meta-item strong {
+      display: block;
+      font-size: .84rem;
+      line-height: 1.45;
+      color: #1b2642;
+    }
+
+    @media (max-width: 1080px) {
+      .advanced-kpi-grid,
+      .advanced-summary-grid,
+      .advanced-entry-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 768px) {
+      .toolbar { flex-wrap: wrap; }
+      .view-switch { width: 100%; justify-content: space-between; }
+      .view-switch-btn { flex: 1; }
+      .advanced-shell {
+        margin: 16px;
+        padding: 18px;
+        border-radius: 22px;
+      }
+      .advanced-title { font-size: 1.65rem; }
+      .advanced-kpi-grid,
+      .advanced-summary-grid,
+      .advanced-entry-meta {
+        grid-template-columns: 1fr;
+      }
+      .advanced-results-shell { padding: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -359,6 +713,9 @@
     <div class="sub" id="header-sub">Sinop — Mato Grosso · 2026</div>
   </div>
   <div class="header-right">
+    <button type="button" class="header-view-btn" id="header-view-btn" onclick="toggleVisualizacao()">
+      Abrir visão avançada
+    </button>
     <div id="ultima-atualizacao">Carregando…</div>
   </div>
 </header>
@@ -416,13 +773,11 @@
 <div class="toolbar">
   <label for="filtro-municipio">Município:</label>
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
-    <option value="sinop">Sinop</option>
+    <option value="acorizal">Acorizal</option>
     <option value="lucas_do_rio_verde">Lucas do Rio Verde</option>
     <option value="jangada">Jangada</option>
-    <option value="rondonopolis">Rondonópolis</option>
     <option value="rondolandia">Rondolândia</option>
-    <option value="acorizal">Acorizal</option>
-    <option value="estado_de_mato_grosso">Estado de Mato Grosso</option>
+    <option value="sinop">Sinop</option>
   </select>
   <!-- Filtro de Ano removido/escondido, fixado em 2025 -->
   <input type="hidden" id="filtro-ano-val" value="2025">
@@ -436,65 +791,148 @@
   <button id="btn-export" onclick="exportCurrentTabToCSV()">📥 Exportar CSV</button>
 </div>
 
-<!-- ── Cards ───────────────────────────────────────────────────────────── -->
-<div class="cards">
-  <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
-    <div class="num" id="cnt-ambos">—</div>
-    <div class="label">Publicadas nos Dois Sistemas</div>
-    <div class="desc">Registradas no PNCP e no APLIC</div>
+<div class="dashboard-view active" id="view-classica">
+  <!-- ── Cards ─────────────────────────────────────────────────────────── -->
+  <div class="cards">
+    <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
+      <div class="num" id="cnt-ambos">—</div>
+      <div class="label">Publicadas nos Dois Sistemas</div>
+      <div class="desc">Registradas no PNCP e no APLIC</div>
+    </div>
+    <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
+      <div class="num" id="cnt-pncp">—</div>
+      <div class="label">Só no PNCP</div>
+      <div class="desc">Aguardando registro no APLIC (TCE-MT)</div>
+    </div>
+    <div class="card laranja" title="Licitações registradas no APLIC (TCE-MT) mas não publicadas no portal federal PNCP">
+      <div class="num" id="cnt-aplic">—</div>
+      <div class="label">Só no APLIC</div>
+      <div class="desc">Sem publicação no portal federal (PNCP)</div>
+    </div>
+    <div class="card vermelho" title="Publicadas no PNCP há mais de 5 dias úteis sem aparecerem no APLIC — prazo legal vencido">
+      <div class="num" id="cnt-alertas">—</div>
+      <div class="label">Prazo Vencido</div>
+      <div class="desc">+5 dias úteis no PNCP sem registro no APLIC</div>
+    </div>
   </div>
-  <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
-    <div class="num" id="cnt-pncp">—</div>
-    <div class="label">Só no PNCP</div>
-    <div class="desc">Aguardando registro no APLIC (TCE-MT)</div>
-  </div>
-  <div class="card laranja" title="Licitações registradas no APLIC (TCE-MT) mas não publicadas no portal federal PNCP">
-    <div class="num" id="cnt-aplic">—</div>
-    <div class="label">Só no APLIC</div>
-    <div class="desc">Sem publicação no portal federal (PNCP)</div>
-  </div>
-  <div class="card vermelho" title="Publicadas no PNCP há mais de 5 dias úteis sem aparecerem no APLIC — prazo legal vencido">
-    <div class="num" id="cnt-alertas">—</div>
-    <div class="label">Prazo Vencido</div>
-    <div class="desc">+5 dias úteis no PNCP sem registro no APLIC</div>
-  </div>
-</div>
 
-<!-- ── Resumo de dados do município ─────────────────────────────────────── -->
-<div id="resumo-municipio" style="
-  margin: 0 32px 16px;
-  background: #eef2fb;
-  border-left: 4px solid #1a3a6b;
-  border-radius: 0 8px 8px 0;
-  padding: 12px 18px;
-  font-size: .83rem;
-  color: #1a2a4a;
-  line-height: 1.6;
-  display: none;
-">
-  <span id="resumo-texto"></span>
-</div>
+  <!-- ── Resumo de dados do município ───────────────────────────────────── -->
+  <div id="resumo-municipio" style="
+    margin: 0 32px 16px;
+    background: #eef2fb;
+    border-left: 4px solid #1a3a6b;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 18px;
+    font-size: .83rem;
+    color: #1a2a4a;
+    line-height: 1.6;
+    display: none;
+  ">
+    <span id="resumo-texto"></span>
+  </div>
 
-<!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
-<div class="tabs-wrap">
-  <nav class="tab-nav">
-    <button class="tab-btn active" onclick="switchTab('ambos', this)" title="Licitações confirmadas nos dois sistemas pelo crossmatch">
-      Nos dois sistemas <span class="badge" id="badge-ambos">—</span>
-    </button>
-    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)" title="Publicadas no PNCP mas sem registro no APLIC">
-      Só no PNCP <span class="badge" id="badge-pncp">—</span>
-    </button>
-    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)" title="Registradas no APLIC mas não publicadas no PNCP">
-      Só no APLIC <span class="badge" id="badge-aplic">—</span>
-    </button>
-  </nav>
-  <div class="tab-content">
-    <div class="table-wrap">
-      <div id="table-container">
-        <div class="state-msg"><div class="spinner"></div><br>Conectando ao Firebase…</div>
+  <!-- ── Tabs ───────────────────────────────────────────────────────────── -->
+  <div class="tabs-wrap">
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="ambos" onclick="switchTab('ambos')" title="Licitações confirmadas nos dois sistemas pelo crossmatch">
+        Nos dois sistemas <span class="badge" id="badge-ambos">—</span>
+      </button>
+      <button class="tab-btn" data-tab="apenas_pncp" onclick="switchTab('apenas_pncp')" title="Publicadas no PNCP mas sem registro no APLIC">
+        Só no PNCP <span class="badge" id="badge-pncp">—</span>
+      </button>
+      <button class="tab-btn" data-tab="apenas_aplic" onclick="switchTab('apenas_aplic')" title="Registradas no APLIC mas não publicadas no PNCP">
+        Só no APLIC <span class="badge" id="badge-aplic">—</span>
+      </button>
+    </nav>
+    <div class="tab-content">
+      <div class="table-wrap">
+        <div id="table-container">
+          <div class="state-msg"><div class="spinner"></div><br>Conectando ao Firebase…</div>
+        </div>
       </div>
     </div>
   </div>
+</div>
+
+<div class="dashboard-view" id="view-avancada">
+  <section class="advanced-shell">
+    <div class="advanced-hero">
+      <div>
+        <div class="advanced-eyebrow">Painel avançado</div>
+        <h2 class="advanced-title" id="advanced-title">Leitura avançada das inconsistências do município</h2>
+        <p class="advanced-subtitle" id="advanced-subtitle">
+          Visualização analítica inspirada na interface moderna solicitada, mantendo os mesmos dados de Firebase/crossmatch da visão clássica.
+        </p>
+      </div>
+      <div class="advanced-chip-row">
+        <span class="advanced-chip" id="advanced-chip-municipio">Município: —</span>
+        <span class="advanced-chip" id="advanced-chip-fonte">Fonte: Firebase</span>
+        <span class="advanced-chip" id="advanced-chip-orgao">Órgão: Todos</span>
+      </div>
+    </div>
+
+    <div class="advanced-kpi-grid">
+      <div class="advanced-kpi">
+        <div class="advanced-kpi-label">Cruzadas</div>
+        <div class="advanced-kpi-count" id="adv-cnt-ambos">—</div>
+        <div class="advanced-kpi-total" id="adv-total-ambos">—</div>
+        <div class="advanced-kpi-note">Casos com evidência nos dois sistemas.</div>
+      </div>
+      <div class="advanced-kpi">
+        <div class="advanced-kpi-label">Gap no APLIC</div>
+        <div class="advanced-kpi-count" id="adv-cnt-pncp">—</div>
+        <div class="advanced-kpi-total" id="adv-total-pncp">—</div>
+        <div class="advanced-kpi-note">Publicadas no PNCP e ainda ausentes no APLIC.</div>
+      </div>
+      <div class="advanced-kpi">
+        <div class="advanced-kpi-label">Gap no PNCP</div>
+        <div class="advanced-kpi-count" id="adv-cnt-aplic">—</div>
+        <div class="advanced-kpi-total" id="adv-total-aplic">—</div>
+        <div class="advanced-kpi-note">Presentes no APLIC, mas sem reflexo no portal nacional.</div>
+      </div>
+      <div class="advanced-kpi">
+        <div class="advanced-kpi-label">Prazo vencido</div>
+        <div class="advanced-kpi-count" id="adv-cnt-alertas">—</div>
+        <div class="advanced-kpi-total" id="adv-total-alertas">Risco operacional</div>
+        <div class="advanced-kpi-note">Itens PNCP que já extrapolaram a janela esperada para registro no APLIC.</div>
+      </div>
+    </div>
+
+    <div class="advanced-summary-grid">
+      <div class="advanced-summary-card">
+        <div class="advanced-summary-label">Taxa de cruzamento</div>
+        <div class="advanced-summary-value" id="adv-cobertura">—</div>
+        <div class="advanced-summary-text" id="adv-cobertura-texto">Aguardando dados.</div>
+      </div>
+      <div class="advanced-summary-card">
+        <div class="advanced-summary-label">Leitura executiva</div>
+        <div class="advanced-summary-value" id="adv-total-geral">—</div>
+        <div class="advanced-summary-text" id="adv-resumo-executivo">Aguardando dados.</div>
+      </div>
+      <div class="advanced-summary-card">
+        <div class="advanced-summary-label">Filtro ativo</div>
+        <div class="advanced-summary-value" id="adv-filtro-ativo">Todos os órgãos</div>
+        <div class="advanced-summary-text" id="adv-filtro-texto">Sem recorte adicional aplicado.</div>
+      </div>
+    </div>
+
+    <div class="advanced-results-shell">
+      <nav class="advanced-tab-nav">
+        <button class="advanced-tab-btn active" data-tab="ambos" onclick="switchTab('ambos')">
+          Nos dois sistemas <span class="badge" id="adv-badge-ambos">—</span>
+        </button>
+        <button class="advanced-tab-btn" data-tab="apenas_pncp" onclick="switchTab('apenas_pncp')">
+          Só no PNCP <span class="badge" id="adv-badge-pncp">—</span>
+        </button>
+        <button class="advanced-tab-btn" data-tab="apenas_aplic" onclick="switchTab('apenas_aplic')">
+          Só no APLIC <span class="badge" id="adv-badge-aplic">—</span>
+        </button>
+      </nav>
+      <div class="advanced-results" id="advanced-results-container">
+        <div class="state-msg" style="color:rgba(238,244,255,.72)">Conectando ao Firebase…</div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- ── Legenda ─────────────────────────────────────────────────────────── -->
@@ -570,21 +1008,6 @@ const MUNICIPIOS = {
       { cnpj:'24772071000170', nome:'CAMARA MUNICIPAL DE JANGADA', ugs:['1115542'] },
       { cnpj:'35547084000162', nome:'FUNDO MUNICIPAL DE PREVIDENCIA SOCIAL DOS SERVIDORES DE JANGADA/MT', ugs:['1159581'] },
     ]
-  },
-  estado_de_mato_grosso: {
-    nome: 'Estado de Mato Grosso', uf: 'MT',
-    orgaos: [
-      { cnpj:'03507415000144', nome:'Governo do Estado de Mato Grosso', ugs: [] }
-    ]
-  },
-  rondonopolis: {
-    nome: 'Rondonópolis', uf: 'MT',
-    orgaos: [
-      { cnpj:'03507415000144', nome:'PREFEITURA MUNICIPAL DE RONDONOPOLIS', ugs:['1112414'] },
-      { cnpj:'00814426000182', nome:'CAMARA MUNICIPAL DE RONDONOPOLIS', ugs:['1111629'] },
-      { cnpj:'03819075000160', nome:'INSTITUTO MUNICIPAL DE PREVIDENCIA DOS SERVIDORES PUBLICOS DE RONDONOPOLIS/MT', ugs:['1117978'] },
-      { cnpj:'24696114000174', nome:'SERVICO AUTONOMO DE AGUA E ESGOTO DE RONDONOPOLIS', ugs:['1142512'] },
-    ]
   }
 };
 
@@ -601,8 +1024,9 @@ const firebaseConfig = {
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Municípios do MVP — único filtro do dropdown
-const MUNICIPIOS_MVP = new Set(['sinop','lucas_do_rio_verde','jangada','rondonopolis','rondolandia','acorizal', 'estado_de_mato_grosso']);
+// Lista final de municípios permitidos na interface
+const MUNICIPIOS_PERMITIDOS = ['acorizal', 'lucas_do_rio_verde', 'jangada', 'rondolandia', 'sinop'];
+const MUNICIPIOS_MVP = new Set(MUNICIPIOS_PERMITIDOS);
 
 let currentMunKey = 'sinop';
 let pncpBuffer   = [];   // registros da API PNCP
@@ -617,6 +1041,7 @@ let abaAtiva    = 'ambos';
 let orgaoFiltro = '';
 let filtroAno      = '2025';
 let painelAberto = false;
+let visualizacaoAtiva = 'classica';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FIREBASE
@@ -1303,6 +1728,10 @@ async function loadMonitor() {
   } catch(e) {
     document.getElementById('table-container').innerHTML =
       `<div class="state-msg">Erro ao carregar Firebase: ${e.message}</div>`;
+    const advancedContainer = document.getElementById('advanced-results-container');
+    if (advancedContainer) {
+      advancedContainer.innerHTML = `<div class="state-msg" style="color:rgba(238,244,255,.72)">Erro ao carregar Firebase: ${e.message}</div>`;
+    }
     console.error(e);
   }
 }
@@ -1311,37 +1740,119 @@ async function loadMonitor() {
 // CARDS E TABS
 // ═══════════════════════════════════════════════════════════════════════════
 
+function sumValores(docs) {
+  return docs.reduce((acc, doc) => acc + (parseFloat(doc?.valor) || 0), 0);
+}
+
+function fmtCompactValor(v) {
+  if (!v) return 'Sem valor agregado';
+  return v.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    notation: v >= 1000000 ? 'compact' : 'standard',
+    maximumFractionDigits: v >= 1000000 ? 1 : 2
+  });
+}
+
+function getResumoAvaliacao(cobertura) {
+  if (cobertura >= 60) return 'Boa cobertura entre os dois sistemas.';
+  if (cobertura >= 30) return 'Cobertura parcial com gaps relevantes.';
+  return 'Baixa cobertura, com forte concentração de gaps.';
+}
+
+function getFilteredBuckets(data) {
+  const filtered = {
+    ambos: applyFiltros(data.ambos || []),
+    apenas_pncp: applyFiltros(data.apenas_pncp || []),
+    apenas_aplic: applyFiltros(data.apenas_aplic || [])
+  };
+  const total = filtered.ambos.length + filtered.apenas_pncp.length + filtered.apenas_aplic.length;
+  const cobertura = total > 0 ? Math.round((filtered.ambos.length / total) * 100) : 0;
+  return {
+    ...filtered,
+    total,
+    cobertura,
+    alertas: filtered.apenas_pncp.filter(d => d.alertaAtivo).length,
+    totalAmbosValor: sumValores(filtered.ambos),
+    totalPncpValor: sumValores(filtered.apenas_pncp),
+    totalAplicValor: sumValores(filtered.apenas_aplic)
+  };
+}
+
+function getOrgaoFiltroLabel() {
+  const sel = document.getElementById('filtro-orgao');
+  return sel?.selectedOptions?.[0]?.textContent || 'Todos';
+}
+
 function updateCards(data) {
-  const { ambos, apenas_pncp, apenas_aplic } = data;
-  const fa = applyFiltros(ambos);
-  const fp = applyFiltros(apenas_pncp);
-  const fc = applyFiltros(apenas_aplic);
-  document.getElementById('cnt-ambos').textContent   = fa.length;
-  document.getElementById('cnt-pncp').textContent    = fp.length;
-  document.getElementById('cnt-aplic').textContent   = fc.length;
-  document.getElementById('badge-ambos').textContent  = fa.length;
-  document.getElementById('badge-pncp').textContent   = fp.length;
-  document.getElementById('badge-aplic').textContent  = fc.length;
-  const alertas = fp.filter(d => d.alertaAtivo).length;
-  document.getElementById('cnt-alertas').textContent = alertas;
-  atualizarResumoMunicipio(fa.length, fp.length, fc.length);
+  const filtered = getFilteredBuckets(data);
+  document.getElementById('cnt-ambos').textContent = filtered.ambos.length;
+  document.getElementById('cnt-pncp').textContent = filtered.apenas_pncp.length;
+  document.getElementById('cnt-aplic').textContent = filtered.apenas_aplic.length;
+  document.getElementById('badge-ambos').textContent = filtered.ambos.length;
+  document.getElementById('badge-pncp').textContent = filtered.apenas_pncp.length;
+  document.getElementById('badge-aplic').textContent = filtered.apenas_aplic.length;
+  document.getElementById('cnt-alertas').textContent = filtered.alertas;
+
+  document.getElementById('adv-badge-ambos').textContent = filtered.ambos.length;
+  document.getElementById('adv-badge-pncp').textContent = filtered.apenas_pncp.length;
+  document.getElementById('adv-badge-aplic').textContent = filtered.apenas_aplic.length;
+  document.getElementById('adv-cnt-ambos').textContent = filtered.ambos.length;
+  document.getElementById('adv-cnt-pncp').textContent = filtered.apenas_pncp.length;
+  document.getElementById('adv-cnt-aplic').textContent = filtered.apenas_aplic.length;
+  document.getElementById('adv-cnt-alertas').textContent = filtered.alertas;
+  document.getElementById('adv-total-ambos').textContent = fmtCompactValor(filtered.totalAmbosValor);
+  document.getElementById('adv-total-pncp').textContent = fmtCompactValor(filtered.totalPncpValor);
+  document.getElementById('adv-total-aplic').textContent = fmtCompactValor(filtered.totalAplicValor);
+  document.getElementById('adv-cobertura').textContent = `${filtered.cobertura}%`;
+  document.getElementById('adv-cobertura-texto').textContent = getResumoAvaliacao(filtered.cobertura);
+  document.getElementById('adv-total-geral').textContent = `${filtered.total} licitações`;
+  document.getElementById('adv-resumo-executivo').textContent =
+    `${filtered.apenas_pncp.length} lacunas no APLIC e ${filtered.apenas_aplic.length} lacunas no PNCP sob o recorte atual.`;
+  document.getElementById('adv-filtro-ativo').textContent = orgaoFiltro ? getOrgaoFiltroLabel() : 'Todos os órgãos';
+  document.getElementById('adv-filtro-texto').textContent = orgaoFiltro
+    ? 'Recorte por órgão ativo para ambas as visualizações.'
+    : 'Sem recorte adicional aplicado ao município selecionado.';
+  document.getElementById('advanced-chip-municipio').textContent = `Município: ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}`;
+  document.getElementById('advanced-chip-fonte').textContent = `Fonte: ${viewSource === 'analise' ? 'Análise local' : 'Firebase'}`;
+  document.getElementById('advanced-chip-fonte').className = `advanced-chip${viewSource === 'analise' ? ' analise' : ''}`;
+  document.getElementById('advanced-chip-orgao').textContent = `Órgão: ${orgaoFiltro ? getOrgaoFiltroLabel() : 'Todos'}`;
+  document.getElementById('advanced-title').textContent = `Leitura avançada de ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}`;
+  document.getElementById('advanced-subtitle').textContent =
+    `A mesma base da visão clássica, reorganizada para leitura executiva rápida de cobertura, inconsistências e prioridade operacional em ${MUNICIPIOS[currentMunKey]?.nome || slugToNome(currentMunKey)}.`;
+
+  atualizarResumoMunicipio(filtered.ambos.length, filtered.apenas_pncp.length, filtered.apenas_aplic.length);
 }
 
 function renderAll(data) {
   updateCards(data);
   renderTab(data);
+  renderAdvanced(data);
 }
 
 function renderTab(data) {
   const container = document.getElementById('table-container');
   container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
 
-  const { ambos, apenas_pncp, apenas_aplic } = data;
+  const filtered = getFilteredBuckets(data);
 
   let html = '';
-  if (abaAtiva === 'ambos')            html = renderAmbos(applyFiltros(ambos));
-  else if (abaAtiva === 'apenas_pncp') html = renderApenasPncp(applyFiltros(apenas_pncp));
-  else                                 html = renderApenasAplic(applyFiltros(apenas_aplic));
+  if (abaAtiva === 'ambos') html = renderAmbos(filtered.ambos);
+  else if (abaAtiva === 'apenas_pncp') html = renderApenasPncp(filtered.apenas_pncp);
+  else html = renderApenasAplic(filtered.apenas_aplic);
+
+  container.innerHTML = html;
+}
+
+function renderAdvanced(data) {
+  const filtered = getFilteredBuckets(data);
+  const container = document.getElementById('advanced-results-container');
+  if (!container) return;
+
+  let html = '';
+  if (abaAtiva === 'ambos') html = renderAdvancedEntries(filtered.ambos, 'ambos');
+  else if (abaAtiva === 'apenas_pncp') html = renderAdvancedEntries(filtered.apenas_pncp, 'apenas_pncp');
+  else html = renderAdvancedEntries(filtered.apenas_aplic, 'apenas_aplic');
 
   container.innerHTML = html;
 }
@@ -1409,26 +1920,123 @@ function renderApenasAplic(docs) {
     <tbody>${rows}</tbody></table>`;
 }
 
+function escapeHtml(txt) {
+  return String(txt || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getAdvancedStatus(type, doc) {
+  if (type === 'ambos') return { label: 'Cruzado', cls: 'ok' };
+  if (type === 'apenas_pncp') {
+    return doc.alertaAtivo
+      ? { label: 'Prazo vencido', cls: 'danger' }
+      : { label: 'Aguardando APLIC', cls: 'warn' };
+  }
+  return { label: 'Sem PNCP', cls: 'neutral' };
+}
+
+function renderAdvancedMeta(type, doc) {
+  if (type === 'ambos') {
+    return `
+      <div class="advanced-meta-item"><span>Órgão</span><strong>${escapeHtml(doc.orgao || '—')}</strong></div>
+      <div class="advanced-meta-item"><span>Data PNCP</span><strong>${fmtDate(doc.dataPNCP)}</strong></div>
+      <div class="advanced-meta-item"><span>Data APLIC</span><strong>${fmtDate(doc.dataAPLIC)}</strong></div>
+      <div class="advanced-meta-item"><span>Score / Match</span><strong>${doc.score_cruzamento || '—'} · ${escapeHtml(doc.estrategia_match || '—')}</strong></div>
+    `;
+  }
+  if (type === 'apenas_pncp') {
+    return `
+      <div class="advanced-meta-item"><span>Órgão</span><strong>${escapeHtml(doc.orgao || '—')}</strong></div>
+      <div class="advanced-meta-item"><span>Data PNCP</span><strong>${fmtDate(doc.dataPNCP)}</strong></div>
+      <div class="advanced-meta-item"><span>Prazo APLIC</span><strong>${fmtDate(doc.prazoAplic)}</strong></div>
+      <div class="advanced-meta-item"><span>Situação</span><strong>${doc.alertaAtivo ? 'Vencido' : 'Aguardando registro'}</strong></div>
+    `;
+  }
+  return `
+    <div class="advanced-meta-item"><span>Órgão</span><strong>${escapeHtml(doc.orgao || '—')}</strong></div>
+    <div class="advanced-meta-item"><span>Data APLIC</span><strong>${fmtDate(doc.dataAPLIC)}</strong></div>
+    <div class="advanced-meta-item"><span>Status</span><strong>Sem publicação correspondente no PNCP</strong></div>
+    <div class="advanced-meta-item"><span>CNPJ</span><strong>${escapeHtml(doc.cnpj || '—')}</strong></div>
+  `;
+}
+
+function renderAdvancedEntries(docs, type) {
+  if (!docs.length) {
+    return `<div class="state-msg" style="color:rgba(238,244,255,.72)">Nenhum registro encontrado com os filtros atuais.</div>`;
+  }
+
+  const rows = docs.map(doc => {
+    const status = getAdvancedStatus(type, doc);
+    return `
+      <article class="advanced-entry ${doc.alertaAtivo ? 'alerta' : ''}">
+        <div class="advanced-entry-head">
+          <div>
+            <span class="advanced-status ${status.cls}">${status.label}</span>
+            <div class="advanced-entry-code">${escapeHtml(doc.numero || '—')}/${escapeHtml(doc.ano || '—')} · ${escapeHtml(doc.modalidade || '—')}</div>
+          </div>
+          <div class="advanced-entry-value">${fmtValor(doc.valor)}</div>
+        </div>
+        <div class="advanced-entry-title">${escapeHtml(doc.objeto || 'Sem objeto informado')}</div>
+        <div class="advanced-entry-meta">
+          ${renderAdvancedMeta(type, doc)}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  return `<div class="advanced-list">${rows}</div>`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // EVENTOS DE UI
 // ═══════════════════════════════════════════════════════════════════════════
 
-function switchTab(name, btn) {
-  abaAtiva = name;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const container = document.getElementById('table-container');
-  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+function syncTabButtons() {
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === abaAtiva);
+  });
+}
 
+function renderCurrentData() {
   if (viewSource === 'analise' && crossResult) renderFromCross();
   else if (monitorCache.ambos !== null) renderAll(monitorCache);
   else loadMonitor();
 }
 
+function toggleVisualizacao() {
+  setVisualizacao(visualizacaoAtiva === 'classica' ? 'avancada' : 'classica');
+}
+
+function setVisualizacao(mode) {
+  visualizacaoAtiva = mode;
+  document.getElementById('view-classica').classList.toggle('active', mode === 'classica');
+  document.getElementById('view-avancada').classList.toggle('active', mode === 'avancada');
+  const headerBtn = document.getElementById('header-view-btn');
+  if (headerBtn) {
+    headerBtn.textContent = mode === 'classica' ? 'Abrir visão avançada' : 'Voltar à visão clássica';
+    headerBtn.setAttribute('aria-label', mode === 'classica' ? 'Abrir visão avançada' : 'Voltar à visão clássica');
+  }
+}
+
+function switchTab(name) {
+  abaAtiva = name;
+  syncTabButtons();
+  const container = document.getElementById('table-container');
+  container.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando…</div>';
+  const advanced = document.getElementById('advanced-results-container');
+  if (advanced) {
+    advanced.innerHTML = '<div class="state-msg" style="color:rgba(238,244,255,.72)">Carregando…</div>';
+  }
+  renderCurrentData();
+}
+
 function onFiltroChange(val) {
   orgaoFiltro = val;
-  if (viewSource === 'analise' && crossResult) renderFromCross();
-  else if (monitorCache.ambos !== null) renderAll(monitorCache);
+  renderCurrentData();
 }
 
 function atualizarResumoMunicipio(ambos, apenas_pncp, apenas_aplic) {
@@ -1460,7 +2068,7 @@ function changeMunicipio(key) {
   const mun = MUNICIPIOS[key];
   const nome = mun ? mun.nome : slugToNome(key);
   document.getElementById('header-sub').textContent = `${nome} — MT · 2026`;
-  atualizarResumoMunicipio(key);
+  document.getElementById('resumo-municipio').style.display = 'none';
   const selMun = document.getElementById('filtro-municipio');
   if (selMun) selMun.value = key;
 
@@ -1476,12 +2084,11 @@ function changeMunicipio(key) {
 
 function slugToNome(slug) {
   const NOMES = {
-    sinop: 'Sinop', cuiaba: 'Cuiabá', varzea_grande: 'Várzea Grande',
-    rondonopolis: 'Rondonópolis', tangara_da_serra: 'Tangará da Serra',
-    sorriso: 'Sorriso', lucas_do_rio_verde: 'Lucas do Rio Verde',
-    caceres: 'Cáceres', alta_floresta: 'Alta Floresta',
-    barra_do_garcas: 'Barra do Garças', colider: 'Colíder',
-    primavera_do_leste: 'Primavera do Leste', nova_mutum: 'Nova Mutum',
+    acorizal: 'Acorizal',
+    lucas_do_rio_verde: 'Lucas do Rio Verde',
+    jangada: 'Jangada',
+    rondolandia: 'Rondolândia',
+    sinop: 'Sinop'
   };
   if (NOMES[slug]) return NOMES[slug];
   return slug.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -1536,10 +2143,12 @@ async function loadMunicipios() {
     const sel = document.getElementById('filtro-municipio');
 
     // Filtra apenas cidades do MVP
-    const mvpDocs = snap.docs.filter(d => MUNICIPIOS_MVP.has(d.id));
+    const mvpDocs = snap.docs
+      .filter(d => MUNICIPIOS_MVP.has(d.id))
+      .sort((a, b) => MUNICIPIOS_PERMITIDOS.indexOf(a.id) - MUNICIPIOS_PERMITIDOS.indexOf(b.id));
     if (!mvpDocs.length) return;
 
-    const slugsDisponiveis = mvpDocs.map(d => d.id);
+    const slugsDisponiveis = mvpDocs.map(d => d.id).filter(id => MUNICIPIOS_PERMITIDOS.includes(id));
     if (!slugsDisponiveis.includes(currentMunKey)) {
       currentMunKey = slugsDisponiveis[0];
     }
@@ -1605,8 +2214,7 @@ function applyFiltros(docs, opts = {}) {
 function onAnoChange(val) {
   filtroAno = val;
   updateOrgaoFilterFromData(monitorCache.ambos !== null ? monitorCache : { ambos:[], apenas_pncp:[], apenas_aplic:[] });
-  if (viewSource === 'analise' && crossResult) renderFromCross();
-  else if (monitorCache.ambos !== null) renderAll(monitorCache);
+  renderCurrentData();
 }
 
 function onMunicipioChange(key) {
@@ -1722,6 +2330,8 @@ async function init() {
 
 // Inicializa quando o DOM estiver pronto
 document.addEventListener('DOMContentLoaded', () => {
+  syncTabButtons();
+  setVisualizacao('classica');
   init();
 });
 </script>
