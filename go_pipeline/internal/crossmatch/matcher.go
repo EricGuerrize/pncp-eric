@@ -1,0 +1,307 @@
+package crossmatch
+
+import (
+	"fmt"
+	"log"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/adrg/strutil"
+	"github.com/adrg/strutil/metrics"
+	"github.com/ericguerrize/pncp-go/internal/db"
+	"github.com/ericguerrize/pncp-go/internal/models"
+)
+
+type MatchResult struct {
+	IdPNCP           string
+	IdAPLIC          string
+	Municipio        string
+	StatusCruzamento string
+	ScoreComposto    float64
+	EstrategiaMatch  string
+}
+
+// TokenSortRatio approximates the Python rapidfuzz token_sort_ratio
+func TokenSortRatio(a, b string) float64 {
+	sa := strings.Fields(strings.ToLower(a))
+	sb := strings.Fields(strings.ToLower(b))
+	strA := strings.Join(sa, " ")
+	strB := strings.Join(sb, " ")
+	
+	dist := strutil.Similarity(strA, strB, metrics.NewJaroWinkler())
+	return dist * 100.0
+}
+
+func normalizarTexto(s string) string {
+	s = strings.ToLower(s)
+	// Add stop word removals here if needed to replicate python exact logic
+	return strings.TrimSpace(s)
+}
+
+var accentReplacer = strings.NewReplacer(
+	"á", "a", "à", "a", "ã", "a", "â", "a", "ä", "a",
+	"é", "e", "è", "e", "ê", "e", "ë", "e",
+	"í", "i", "ì", "i", "î", "i", "ï", "i",
+	"ó", "o", "ò", "o", "õ", "o", "ô", "o", "ö", "o",
+	"ú", "u", "ù", "u", "û", "u", "ü", "u",
+	"ç", "c",
+)
+
+// NormalizeMunicipio lowercases, trims and strips accents so that PNCP's
+// "Rondonópolis" and Oracle's already-accent-stripped "RONDONOPOLIS" compare equal.
+func NormalizeMunicipio(s string) string {
+	return accentReplacer.Replace(strings.ToLower(strings.TrimSpace(s)))
+}
+
+func ExecutarCruzamento(pncpRecords []models.ProcessedCompra, aplicRecords []AplicData) ([]MatchResult, error) {
+	log.Println("Iniciando Crossmatch (Go)...")
+	var resultados []MatchResult
+	
+	matchedPncp := make(map[string]bool)
+	matchedAplic := make(map[string]bool)
+
+	// Tier 1 - Semantic + Financial
+	for _, pncp := range pncpRecords {
+		if matchedPncp[pncp.NumeroControlePNCP] {
+			continue
+		}
+		
+		valPncp := pncp.ValorTotalHomologado
+		if valPncp == 0 {
+			valPncp = pncp.ValorTotalEstimado
+		}
+		
+		objPncpNorm := normalizarTexto(pncp.ObjetoCompra)
+		munPncp := normalizarTexto(pncp.MunicipioNome)
+		
+		var bestScore float64 = 0
+		var bestAplicIdx = -1
+		
+		for j, aplic := range aplicRecords {
+			if matchedAplic[fmt.Sprintf("%d", j)] {
+				continue
+			}
+			
+			if normalizarTexto(aplic.Municipio) != munPncp || fmt.Sprintf("%d", aplic.Ano) != fmt.Sprintf("%d", pncp.AnoCompra) {
+				continue
+			}
+			
+			objAplicNorm := normalizarTexto(aplic.Objetivo)
+			score := TokenSortRatio(objPncpNorm, objAplicNorm)
+			
+			if score >= 85 {
+				// verify financial
+				valAplic := aplic.ValorEstimado
+				if valPncp > 0 && valAplic > 0 {
+					delta := math.Abs(valPncp - valAplic) / math.Max(valPncp, valAplic) * 100
+					if delta <= 10 {
+						if score > bestScore {
+							bestScore = score
+							bestAplicIdx = j
+						}
+					}
+				}
+			}
+		}
+		
+		if bestAplicIdx != -1 {
+			matchedPncp[pncp.NumeroControlePNCP] = true
+			matchedAplic[fmt.Sprintf("%d", bestAplicIdx)] = true
+			
+			resultados = append(resultados, MatchResult{
+				IdPNCP:           pncp.NumeroControlePNCP,
+				IdAPLIC:          fmt.Sprintf("APLIC-%d", bestAplicIdx), // Generate a unique ID
+				Municipio:        pncp.MunicipioNome,
+				StatusCruzamento: "MATCH_CONFIRMADO",
+				ScoreComposto:    bestScore,
+				EstrategiaMatch:  "primario_semantico",
+			})
+		}
+	}
+	
+	log.Printf("[Tier 1] %d matches semânticos\n", len(resultados))
+	
+	// Tier 2 - CNPJ + Date
+	matchesTier2 := 0
+	for _, pncp := range pncpRecords {
+		if matchedPncp[pncp.NumeroControlePNCP] {
+			continue
+		}
+		
+		cnpjPncp := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' { return r }
+			return -1
+		}, pncp.OrgaoEntidadeCNPJ)
+
+		if cnpjPncp == "" {
+			continue
+		}
+
+		objPncpNorm := normalizarTexto(pncp.ObjetoCompra)
+
+		bestDeltaDays := 9999.0
+		bestAplicIdx := -1
+
+		for j, aplic := range aplicRecords {
+			if matchedAplic[fmt.Sprintf("%d", j)] {
+				continue
+			}
+
+			if aplic.CNPJ != cnpjPncp {
+				continue
+			}
+
+			// CNPJ e data próxima sozinhos não bastam: um mesmo órgão publica várias
+			// licitações distintas na mesma janela de dias. Exige-se uma similaridade
+			// mínima de objeto para descartar pares claramente não relacionados.
+			// A similaridade Jaro-Winkler em textos administrativos longos é pouco
+			// discriminante: pares de objetos totalmente diferentes já pontuaram 70-73
+			// nos testes (contra 94-96 de pares realmente iguais). Por isso o piso
+			// fica bem acima do ruído, próximo ao limiar do Tier 1.
+			textScore := TokenSortRatio(objPncpNorm, normalizarTexto(aplic.Objetivo))
+			if textScore < 80 {
+				continue
+			}
+
+			// Compare dates if both are valid
+			if !pncp.DataPublicacaoPncp.IsZero() && !aplic.DataAbertura.IsZero() {
+				delta := math.Abs(pncp.DataPublicacaoPncp.Sub(aplic.DataAbertura).Hours() / 24.0)
+				if delta <= 10 && delta < bestDeltaDays {
+					bestDeltaDays = delta
+					bestAplicIdx = j
+				}
+			} else if bestAplicIdx == -1 {
+				// Sem data em um dos lados: só aceita porque o objeto já passou no filtro de similaridade acima.
+				bestDeltaDays = 0
+				bestAplicIdx = j
+			}
+		}
+		
+		if bestAplicIdx != -1 {
+			matchedPncp[pncp.NumeroControlePNCP] = true
+			matchedAplic[fmt.Sprintf("%d", bestAplicIdx)] = true
+			
+			// compute composite score (Tier 2 leans heavily on date, but we use a default passing score of 70)
+			resultados = append(resultados, MatchResult{
+				IdPNCP:           pncp.NumeroControlePNCP,
+				IdAPLIC:          fmt.Sprintf("APLIC-%d", bestAplicIdx),
+				Municipio:        pncp.MunicipioNome,
+				StatusCruzamento: "MATCH_PARCIAL",
+				ScoreComposto:    75.0, 
+				EstrategiaMatch:  "secundario_cnpj_data",
+			})
+			matchesTier2++
+		}
+	}
+	log.Printf("[Tier 2] %d matches por CNPJ+Data\n", matchesTier2)
+
+	// Tier 3 - Structural Fallback
+	matchesTier3 := 0
+	for _, pncp := range pncpRecords {
+		if matchedPncp[pncp.NumeroControlePNCP] {
+			continue
+		}
+		
+		numPncp, anoPncp := extrairNumeroAno(pncp.NumeroCompra)
+		
+		for j, aplic := range aplicRecords {
+			if matchedAplic[fmt.Sprintf("%d", j)] {
+				continue
+			}
+			
+			if normalizarTexto(aplic.Municipio) == normalizarTexto(pncp.MunicipioNome) &&
+			   aplic.Numero == numPncp && 
+			   aplic.Ano == anoPncp && 
+			   aplic.ModalidadePNCPId == pncp.ModalidadeId {
+				
+				matchedPncp[pncp.NumeroControlePNCP] = true
+				matchedAplic[fmt.Sprintf("%d", j)] = true
+				
+				resultados = append(resultados, MatchResult{
+					IdPNCP:           pncp.NumeroControlePNCP,
+					IdAPLIC:          fmt.Sprintf("APLIC-%d", j),
+					Municipio:        pncp.MunicipioNome,
+					StatusCruzamento: "MATCH_PARCIAL",
+					ScoreComposto:    70.0,
+					EstrategiaMatch:  "terciario_estrutural",
+				})
+				matchesTier3++
+				break
+			}
+		}
+	}
+	log.Printf("[Tier 3] %d matches estruturais\n", matchesTier3)
+	
+	// Remainder are marked as NO MATCH / ORPHANS
+	for _, pncp := range pncpRecords {
+		if !matchedPncp[pncp.NumeroControlePNCP] {
+			resultados = append(resultados, MatchResult{
+				IdPNCP:           pncp.NumeroControlePNCP,
+				IdAPLIC:          "",
+				Municipio:        pncp.MunicipioNome,
+				StatusCruzamento: "SEM_MATCH",
+				ScoreComposto:    0,
+				EstrategiaMatch:  "sem_match",
+			})
+		}
+	}
+	
+	for j, aplic := range aplicRecords {
+		if !matchedAplic[fmt.Sprintf("%d", j)] {
+			resultados = append(resultados, MatchResult{
+				IdPNCP:           "",
+				IdAPLIC:          fmt.Sprintf("APLIC-%d", j),
+				Municipio:        aplic.Municipio,
+				StatusCruzamento: "APENAS_APLIC",
+				ScoreComposto:    0,
+				EstrategiaMatch:  "sem_par_pncp",
+			})
+		}
+	}
+	
+	// Salvar no banco
+	if err := SalvarResultados(resultados); err != nil {
+		return nil, err
+	}
+
+	return resultados, nil
+}
+
+func SalvarResultados(resultados []MatchResult) error {
+	conn, err := db.GetConnection()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	tx, err := conn.Begin()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare("INSERT OR REPLACE INTO crossmatch_results (id_pncp, id_aplic, municipio, status_cruzamento, score_composto, estrategia_match) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, r := range resultados {
+		// handle empty IDs for uniqueness
+		pId := r.IdPNCP
+		aId := r.IdAPLIC
+		if pId == "" {
+			pId = "N/A-" + time.Now().String()
+		}
+		if aId == "" {
+			aId = "N/A-" + time.Now().String()
+		}
+		
+		_, err := stmt.Exec(pId, aId, r.Municipio, r.StatusCruzamento, r.ScoreComposto, r.EstrategiaMatch)
+		if err != nil {
+			log.Println("Error inserting crossmatch:", err)
+		}
+	}
+
+	return tx.Commit()
+}

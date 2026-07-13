@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Crossmatch | PNCP × APLIC</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    header {
+      background: #1a3a6b;
+      color: #fff;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      gap: 16px;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: .3px; }
+    header .sub { font-size: .78rem; opacity: .75; margin-top: 2px; }
+    .header-right { display: flex; align-items: center; gap: 20px; }
+    #ultima-atualizacao { font-size: .75rem; opacity: .65; text-align: right; white-space: nowrap; }
+
+    /* ── Painel de Análise ────────────────────────────────── */
+    .painel {
+      background: #fff;
+      border-bottom: 2px solid #c5cad8;
+    }
+    .painel-header {
+      padding: 11px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: .88rem;
+      font-weight: 600;
+      color: #1a3a6b;
+      border-bottom: 1px solid #eef0f4;
+    }
+    .painel-header .tag {
+      display: inline-block;
+      background: #e8edf5;
+      color: #1a3a6b;
+      border-radius: 10px;
+      font-size: .68rem;
+      padding: 2px 8px;
+      margin-left: 8px;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    #painel-body { padding: 20px 32px 24px; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 768px) { .steps { grid-template-columns: 1fr; } }
+
+    .step {
+      border: 1.5px solid #dde1ea;
+      border-radius: 10px;
+      padding: 14px;
+      background: #fafbfd;
+      transition: all 0.2s;
+    }
+    .step.active { border-color: #1a3a6b; background: #f5f7fb; }
+    .step.done   { border-color: #28a745; background: #f8fff9; }
+    .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    
+    .step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #dde1ea;
+      color: #666;
+      font-size: .8rem;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .step.active .step-num { background: #1a3a6b; color: #fff; }
+    .step.done   .step-num { background: #28a745; color: #fff; }
+    .step-title { font-weight: 600; font-size: .84rem; color: #333; }
+    .step-desc { font-size: .74rem; color: #777; line-height: 1.3; }
+
+    .btn { border: none; border-radius: 6px; padding: 7px 14px; font-size: .82rem; cursor: pointer; font-weight: 500; transition: background .15s, opacity .15s; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: #1a3a6b; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #245093; }
+    .btn-live { background: #1a3a6b; color: #fff; font-weight: 600; }
+    .btn-live:hover:not(:disabled) { background: #245093; }
+    .btn-outline { background: #fff; border: 1.5px solid #1a3a6b; color: #1a3a6b; }
+    .btn-outline:hover:not(:disabled) { background: #f0f4fa; }
+
+    .progress-wrap { margin-top: 14px; }
+    .progress-bar {
+      height: 6px;
+      background: #dde1ea;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #1a3a6b;
+      border-radius: 3px;
+      transition: width .2s;
+      width: 0%;
+    }
+    .progress-text { font-size: .75rem; color: #666; margin-top: 4px; }
+
+    /* ── Toolbar ──────────────────────────────────────────── */
+    .toolbar {
+      background: #fff;
+      border-bottom: 1px solid #dde1ea;
+      padding: 9px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .toolbar label { font-size: .85rem; font-weight: 500; color: #555; }
+    .toolbar select, .toolbar input[type=text] {
+      border: 1px solid #c5cad8;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: .83rem;
+      background: #fff;
+      cursor: pointer;
+    }
+    .fonte-chip {
+      font-size: .72rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      background: #e8edf5;
+      color: #1a3a6b;
+    }
+    .fonte-chip.analise { background: #1a3a6b; color: #fff; }
+
+    /* ── Cards ───────────────────────────────────────────── */
+    .cards {
+      display: flex;
+      gap: 16px;
+      padding: 20px 32px 8px;
+      flex-wrap: wrap;
+    }
+    .card {
+      flex: 1;
+      min-width: 160px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      border-left: 5px solid #ccc;
+    }
+    .card.verde   { border-left-color: #28a745; }
+    .card.amarelo { border-left-color: #ffc107; }
+    .card.laranja { border-left-color: #fd7e14; }
+    .card.vermelho{ border-left-color: #dc3545; }
+    .card .num { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .card.verde   .num { color: #28a745; }
+    .card.amarelo .num { color: #e6a800; }
+    .card.laranja .num { color: #fd7e14; }
+    .card.vermelho .num { color: #dc3545; }
+    .card .label { font-size: .76rem; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: .5px; }
+    .card .desc  { font-size: .7rem;  color: #999; margin-top: 2px; }
+
+    /* ── Tabs ────────────────────────────────────────────── */
+    .tabs-wrap { padding: 14px 32px 0; }
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      border-bottom: 2px solid #dde1ea;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 8px 18px;
+      font-size: .86rem;
+      font-weight: 500;
+      cursor: pointer;
+      color: #666;
+      border-radius: 6px 6px 0 0;
+      transition: background .1s, color .1s;
+    }
+    .tab-btn:hover { background: #e8edf5; color: #1a3a6b; }
+    .tab-btn.active {
+      background: #fff;
+      color: #1a3a6b;
+      border: 2px solid #dde1ea;
+      border-bottom: 2px solid #fff;
+      margin-bottom: -2px;
+    }
+    .tab-btn .badge {
+      display: inline-block;
+      background: #e8edf5;
+      color: #1a3a6b;
+      border-radius: 10px;
+      font-size: .68rem;
+      padding: 1px 7px;
+      margin-left: 5px;
+      font-weight: 600;
+    }
+    .tab-btn.active .badge { background: #1a3a6b; color: #fff; }
+
+    /* ── Tabela ──────────────────────────────────────────── */
+    .tab-content {
+      background: #fff;
+      border: 1px solid #dde1ea;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .81rem;
+    }
+    thead tr { background: #f5f7fb; }
+    th {
+      padding: 9px 11px;
+      text-align: left;
+      font-weight: 600;
+      color: #444;
+      border-bottom: 2px solid #dde1ea;
+      white-space: nowrap;
+    }
+    td {
+      padding: 8px 11px;
+      border-bottom: 1px solid #eef0f4;
+      vertical-align: top;
+    }
+    tbody tr:hover { background: #f8f9fc; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr.alerta td { background: #fff5f5; }
+    tbody tr.alerta:hover td { background: #ffeaea; }
+    
+    .badge-alerta {
+      background: #dc3545;
+      color: #fff;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: .67rem;
+      font-weight: 700;
+    }
+    .score-pill {
+      display: inline-block;
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: .73rem;
+      font-weight: 600;
+    }
+    .score-alto   { background: #d4edda; color: #155724; }
+    .score-medio  { background: #fff3cd; color: #856404; }
+    .score-baixo  { background: #f8d7da; color: #721c24; }
+    .chip { display: inline-block; border-radius: 10px; padding: 2px 8px; font-size: .7rem; font-weight: 600; }
+    .chip-s { background: #d4edda; color: #155724; }
+    .chip-n { background: #f8d7da; color: #721c24; }
+    .chip-p { background: #fff3cd; color: #856404; }
+
+    .state-msg {
+      padding: 40px;
+      text-align: center;
+      color: #999;
+      font-size: .88rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 24px; height: 24px;
+      border: 3px solid #dde1ea;
+      border-top-color: #1a3a6b;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .obj-cell { max-width: 350px; }
+    .obj-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div>
+    <h1>Monitor PNCP × APLIC</h1>
+    <div class="sub" id="header-sub">Lucas do Rio Verde — Mato Grosso · 2026</div>
+  </div>
+  <div class="header-right">
+    <a href="index.html" class="btn btn-outline" style="border-color: rgba(255,255,255,0.4); color: #fff; background: transparent; font-size: 0.75rem; text-decoration: none;">↩ Voltar ao Firebase</a>
+    <div id="ultima-atualizacao">Pronto para Cruzamento</div>
+  </div>
+</header>
+
+<!-- ── Painel Cruzamento ao Vivo ─────────────────────────────────────────── -->
+<div class="painel">
+  <div class="painel-header" style="background: #f8f9fb;">
+    <span>Cruzamento em Tempo Real</span>
+  </div>
+  <div id="painel-body">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <p style="font-size: .80rem; color: #555; line-height: 1.4; margin: 0;">
+        Cruze as informações em tempo real buscando as contratações diretamente do banco de dados <strong>Oracle (APLIC)</strong> do TCE-MT e do portal federal <strong>PNCP</strong>. O processo leva em média de 2 a 5 segundos e realiza o cruzamento em memória.
+      </p>
+      
+      <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <button class="btn btn-live" id="btn-live" onclick="runLiveCrossmatch(false)" style="font-size: 0.86rem; padding: 9px 20px;">
+          Iniciar Cruzamento
+        </button>
+        <button class="btn btn-outline" id="btn-refresh" onclick="runLiveCrossmatch(true)" style="display:none; font-size: 0.8rem; padding: 7px 14px;" title="Ignora o cache e busca os dados novamente no Oracle e no PNCP">
+          🔄 Forçar atualização
+        </button>
+        <span id="live-status-text" style="font-size: 0.8rem; color: #777; font-weight: 500;">Aguardando início...</span>
+        <span id="cache-indicator" style="font-size: 0.76rem; color: #999; display:none;"></span>
+      </div>
+
+      <!-- LOADER PROGRESS TRACKER (Hides/Shows dynamically) -->
+      <div id="loading-animation-container" style="display: none; margin-top: 14px; border-top: 1px solid #eef0f4; padding-top: 16px;">
+        <!-- Progress Bar -->
+        <div class="progress-wrap" style="max-width: 500px; margin: 0 auto 20px;">
+          <div class="progress-bar">
+            <div id="live-progress-fill" class="progress-fill" style="width: 0%;"></div>
+          </div>
+          <div id="live-progress-text" class="progress-text" style="text-align: center; font-weight: 600;">Progresso: 0%</div>
+        </div>
+        <div class="steps">
+          <!-- Step 1 -->
+          <div id="live-step-1" class="step">
+            <div class="step-header">
+              <div class="step-num">1</div>
+              <div class="step-title">Descoberta UG</div>
+            </div>
+            <div class="step-desc">Identificando códigos e CNPJs no Oracle...</div>
+          </div>
+          <!-- Step 2 -->
+          <div id="live-step-2" class="step">
+            <div class="step-header">
+              <div class="step-num">2</div>
+              <div class="step-title">Extração APLIC</div>
+            </div>
+            <div class="step-desc">Buscando registros locais do APLIC no Oracle...</div>
+          </div>
+          <!-- Step 3 -->
+          <div id="live-step-3" class="step">
+            <div class="step-header">
+              <div class="step-num">3</div>
+              <div class="step-title">Coleta PNCP</div>
+            </div>
+            <div class="step-desc">Consultando compras publicadas na API federal...</div>
+          </div>
+          <!-- Step 4 -->
+          <div id="live-step-4" class="step">
+            <div class="step-header">
+              <div class="step-num">4</div>
+              <div class="step-title">Crossmatch</div>
+            </div>
+            <div class="step-desc">Calculando scores e conciliando em memória...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <label for="filtro-municipio">Município:</label>
+  <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
+    <option value="lucas_do_rio_verde" selected>Lucas do Rio Verde</option>
+    <option value="acorizal">Acorizal</option>
+    <option value="jangada">Jangada</option>
+    <option value="rondonopolis">Rondonópolis</option>
+    <option value="rondolandia">Rondolândia</option>
+    <option value="sinop">Sinop</option>
+  </select>
+
+  <label for="filtro-ano">Exercício:</label>
+  <select id="filtro-ano" onchange="onAnoChange(this.value)">
+    <option value="2026" selected>2026</option>
+    <option value="2025">2025</option>
+  </select>
+
+  <label for="filtro-orgao">Órgão:</label>
+  <select id="filtro-orgao" onchange="onFiltroChange(this.value)" style="max-width: 280px;">
+    <option value="">Todos</option>
+  </select>
+
+  <label for="search-input">Buscar:</label>
+  <input type="text" id="search-input" oninput="onSearchInput(this.value)" placeholder="Nº ou Objeto..." style="width: 180px;">
+
+  <span class="fonte-chip" id="fonte-chip">📡 Firebase (Histórico)</span>
+  <button id="btn-export" onclick="exportCurrentTabToCSV()" style="margin-left: auto;">📥 Exportar CSV</button>
+</div>
+
+<!-- ── Cards ───────────────────────────────────────────────────────────── -->
+<div class="cards">
+  <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
+    <div class="num" id="cnt-ambos">—</div>
+    <div class="label">Publicadas nos Dois Sistemas</div>
+    <div class="desc">Registradas no PNCP e no APLIC</div>
+  </div>
+  <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
+    <div class="num" id="cnt-pncp">—</div>
+    <div class="label">Só no PNCP</div>
+    <div class="desc">Aguardando registro no APLIC (TCE-MT)</div>
+  </div>
+  <div class="card laranja" title="Licitações registradas no APLIC (TCE-MT) mas não publicadas no portal federal PNCP">
+    <div class="num" id="cnt-aplic">—</div>
+    <div class="label">Só no APLIC</div>
+    <div class="desc">Sem publicação no portal federal (PNCP)</div>
+  </div>
+  <div class="card vermelho" title="Publicadas no PNCP há mais de 5 dias úteis sem aparecerem no APLIC — prazo legal vencido">
+    <div class="num" id="cnt-alertas">—</div>
+    <div class="label">Prazo Vencido</div>
+    <div class="desc">+5 dias úteis no PNCP sem registro no APLIC</div>
+  </div>
+</div>
+
+<!-- ── Resumo de dados do município ─────────────────────────────────────── -->
+<div id="resumo-municipio" style="
+  margin: 0 32px 16px;
+  background: #eef2fb;
+  border-left: 4px solid #1a3a6b;
+  border-radius: 0 8px 8px 0;
+  padding: 12px 18px;
+  font-size: .83rem;
+  color: #1a2a4a;
+  line-height: 1.6;
+  display: none;
+">
+  <span id="resumo-texto"></span>
+</div>
+
+<!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
+<div class="tabs-wrap">
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('ambos', this)" title="Licitações confirmadas nos dois sistemas pelo crossmatch">
+      Nos dois sistemas <span class="badge" id="badge-ambos">—</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('apenas_pncp', this)" title="Publicadas no PNCP mas sem registro no APLIC">
+      Só no PNCP <span class="badge" id="badge-pncp">—</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('apenas_aplic', this)" title="Registradas no APLIC mas não publicadas no PNCP">
+      Só no APLIC <span class="badge" id="badge-aplic">—</span>
+    </button>
+  </nav>
+  <div class="tab-content">
+    <div class="table-wrap">
+      <div id="table-container">
+        <div class="state-msg">Clique em <strong>Iniciar Cruzamento</strong> acima para processar dados em tempo real.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Legenda -->
+<div style="max-width:1100px;margin:0 32px 40px">
+  <div id="legenda-monitor"></div>
+</div>
+<script src="legenda.js"></script>
+
+<!-- PapaParse (CSV) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURAÇÃO
+// ═══════════════════════════════════════════════════════════════════════════
+const API_URL = 'http://localhost:5000/api/live-crossmatch';
+
+const MODALIDADES = {
+  1:'Leilão - Eletrônico', 2:'Diálogo Competitivo', 3:'Concurso',
+  4:'Concorrência - Eletrônica', 5:'Concorrência - Presencial',
+  6:'Pregão - Eletrônico', 7:'Pregão - Presencial',
+  8:'Dispensa de Licitação', 9:'Inexigibilidade',
+  10:'Manifestação de Interesse', 11:'Pré-qualificação',
+  12:'Credenciamento', 13:'Leilão - Presencial'
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════════════════════
+let currentMunKey = 'lucas_do_rio_verde';
+let filtroAno      = '2026';
+let orgaoFiltro    = '';
+let searchFiltro   = '';
+let abaAtiva       = 'ambos';
+let viewSource     = 'local'; // 'local' queries python API
+
+let monitorCache = { ambos: [], apenas_pncp: [], apenas_aplic: [] };
+
+const PAGE_SIZE = 50;
+let currentPage = 1;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════════════════════════════
+function addWorkdays(date, n) {
+  const d = new Date(date);
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) added++;
+  }
+  return d;
+}
+
+function isOverdue(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const deadline = addWorkdays(d, 5);
+  return new Date() > deadline;
+}
+
+function fmtDate(v) {
+  if (!v) return '—';
+  try {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return v;
+    return d.toLocaleDateString('pt-BR');
+  } catch { return '—'; }
+}
+
+function fmtValor(v) {
+  if (v == null || v === '' || v === 'nan' || v === undefined) return '—';
+  const n = parseFloat(v);
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+}
+
+function scoreClass(s) {
+  const n = parseFloat(s);
+  if (isNaN(n)) return '';
+  return n >= 85 ? 'score-alto' : n >= 70 ? 'score-medio' : 'score-baixo';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REAL BACKEND PROGRESS (polling)
+// ═══════════════════════════════════════════════════════════════════════════
+const STAGE_TO_STEP = { ugs: 1, aplic: 2, pncp: 3, crossmatch: 4, done: 4 };
+
+function resetSteps() {
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById(`live-step-${i}`).className = 'step';
+  });
+}
+
+function applyStageToSteps(stage) {
+  const activeStep = STAGE_TO_STEP[stage] || 1;
+  [1, 2, 3, 4].forEach(i => {
+    const el = document.getElementById(`live-step-${i}`);
+    if (i < activeStep) el.className = 'step done';
+    else if (i === activeStep) el.className = 'step active';
+    else el.className = 'step';
+  });
+}
+
+function setProgress(pct, text) {
+  document.getElementById('live-progress-fill').style.width = `${pct}%`;
+  document.getElementById('live-progress-text').textContent = `Progresso: ${Math.round(pct)}%`;
+  if (text) document.getElementById('live-status-text').textContent = text;
+}
+
+function formatCacheAge(cachedAtIso) {
+  const cachedAt = new Date(cachedAtIso);
+  const secs = Math.max(0, Math.round((Date.now() - cachedAt.getTime()) / 1000));
+  if (secs < 60) return `${secs}s atrás`;
+  const mins = Math.round(secs / 60);
+  return `${mins} min atrás`;
+}
+
+let cacheIndicatorTimer = null;
+function showCacheIndicator(cachedAtIso) {
+  const el = document.getElementById('cache-indicator');
+  clearInterval(cacheIndicatorTimer);
+  document.getElementById('btn-refresh').style.display = 'inline-block';
+  if (!cachedAtIso) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'inline';
+  const update = () => { el.textContent = `📦 Resultado em cache · atualizado ${formatCacheAge(cachedAtIso)}`; };
+  update();
+  cacheIndicatorTimer = setInterval(update, 5000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RUN LIVE CROSSMATCH CALL (job-based: start + poll)
+// ═══════════════════════════════════════════════════════════════════════════
+async function runLiveCrossmatch(force) {
+  const selectMun = document.getElementById('filtro-municipio');
+  const munNormalized = selectMun.value.replace(/_/g, ' ');
+  const btnLive = document.getElementById('btn-live');
+  const btnRefresh = document.getElementById('btn-refresh');
+
+  btnLive.disabled = true;
+  btnRefresh.disabled = true;
+  resetSteps();
+  document.getElementById('loading-animation-container').style.display = 'block';
+  setProgress(0, 'Iniciando...');
+
+  const tableContainer = document.getElementById('table-container');
+  tableContainer.innerHTML = '<div class="state-msg"><div class="spinner"></div><br>Carregando dados do Oracle e do PNCP...</div>';
+
+  const finish = () => {
+    btnLive.disabled = false;
+    btnRefresh.disabled = false;
+    document.getElementById('loading-animation-container').style.display = 'none';
+  };
+
+  try {
+    const startUrl = `${API_URL}/start?municipio=${encodeURIComponent(munNormalized)}&ano=${filtroAno}&force=${force ? 'true' : 'false'}`;
+    const startResp = await fetch(startUrl);
+    if (!startResp.ok) {
+      const err = await startResp.json().catch(() => ({}));
+      throw new Error(err.message || `API retornou erro ${startResp.status}`);
+    }
+    const { jobId } = await startResp.json();
+
+    // Poll until the job is done or errors out.
+    while (true) {
+      const statusResp = await fetch(`${API_URL}/status?jobId=${encodeURIComponent(jobId)}`);
+      if (!statusResp.ok) throw new Error(`Falha ao consultar status do job (${statusResp.status})`);
+      const job = await statusResp.json();
+
+      applyStageToSteps(job.stage);
+      const stageBasePct = { ugs: 10, aplic: 25, pncp: 40, crossmatch: 95, done: 100 };
+      let pct = stageBasePct[job.stage] ?? 10;
+      if (job.stage === 'pncp' && job.total > 0) {
+        pct = 40 + (job.current / job.total) * 50; // 40%..90% while PNCP requests complete
+      }
+      setProgress(pct, job.message);
+
+      if (job.status === 'done') {
+        applyStageToSteps('done');
+        setProgress(100, '✓ Cruzamento concluído!');
+        finish();
+        showCacheIndicator(job.cachedAt || null);
+        processAndCacheResults({ status: 'success', data: job.data });
+        return;
+      }
+      if (job.status === 'error') {
+        finish();
+        alert(`Falha no cruzamento:\n${job.error}`);
+        tableContainer.innerHTML = `<div class="state-msg" style="color: #dc3545;">Erro: ${job.error}</div>`;
+        return;
+      }
+
+      await new Promise(res => setTimeout(res, 1200));
+    }
+  } catch (err) {
+    finish();
+    alert(`Falha no cruzamento:\n${err.message}\n\nVerifique se o backend Go ("go run ./cmd/dashboard") está rodando localmente.`);
+    tableContainer.innerHTML = `<div class="state-msg" style="color: #dc3545;">Erro na API local: ${err.message}</div>`;
+  }
+}
+
+function parseToDate(val) {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function processAndCacheResults(resp) {
+  // Map APLIC results and PNCP results
+  const ambos = (resp.data.ambos || []).map(r => {
+    const scoreVal = r.match_score !== undefined ? r.match_score : (r.score_composto !== undefined ? r.score_composto : (r.score_cruzamento || r.score || 0));
+    const dtPncp = parseToDate(r.dataPNCP || r.datapncp || r.dataPublicacaoPncp);
+    const dtAplic = parseToDate(r.dataAPLIC || r.dataaplic || r['Data Abertura']);
+    return {
+      orgao:         r.orgao || r.unidadeOrgao_nomeUnidade || r.orgao_nome || r.UG || '',
+      modalidade:    r.modalidade || r.modalidadeNome || r.Modalidade || '',
+      numero:        r.numero || r.numeroCompra || r['Nº Licitação'] || '',
+      ano:           String(r.ano || r.anoCompra || r['Exercício'] || r['Exerc\u00e9cio'] || ''),
+      objeto:        r.objeto || r.objetoCompra || r.Objetivo || '',
+      valor:         r.valor !== undefined ? r.valor : (r.valorTotalEstimado || r['Valor Estimado']),
+      cnpj:          r.cnpj || r.orgaoEntidade_cnpj || r.cnpj_mapeado || '',
+      dataPNCP:      dtPncp,
+      prazoAplic:    dtPncp ? addWorkdays(dtPncp, 5) : null,
+      statusPNCP:    'S', statusAPLIC: 'S', alertaAtivo: false,
+      orgao_aplic:   r.orgao_aplic || r.UG || '',
+      numero_aplic:  r.numero_aplic || r['Nº Licitação'] || '',
+      objeto_aplic:  r.objeto_aplic || r.Objetivo || r.Motivo || '',
+      valor_aplic:   r.valor_aplic !== undefined ? r.valor_aplic : (r['Valor Estimado'] || r['Valor Vencedor']),
+      dataAPLIC:     dtAplic,
+      score_cruzamento: scoreVal,
+      estrategia_match: r.estrategia_match || r.estrategia || '',
+      municipio:     currentMunKey
+    };
+  });
+
+  const apenas_pncp = (resp.data.apenas_pncp || []).map(p => {
+    const dtPncp = parseToDate(p.dataPNCP || p.datapncp || p.dataPublicacaoPncp);
+    return {
+      orgao:       p.orgao || p.unidadeOrgao_nomeUnidade || p.orgao_nome || '',
+      modalidade:  p.modalidade || p.modalidadeNome || '',
+      numero:      p.numero || p.numeroCompra || '',
+      ano:         String(p.ano || p.anoCompra || ''),
+      objeto:      p.objeto || p.objetoCompra || '',
+      valor:       p.valor !== undefined ? p.valor : p.valorTotalEstimado,
+      cnpj:        p.cnpj || p.orgaoEntidade_cnpj || '',
+      dataPNCP:    dtPncp,
+      prazoAplic:  dtPncp ? addWorkdays(dtPncp, 5) : null,
+      statusPNCP:  'S', statusAPLIC: 'pendente',
+      alertaAtivo: dtPncp ? (new Date() > addWorkdays(dtPncp, 5)) : false,
+      municipio:   currentMunKey
+    };
+  });
+
+  const apenas_aplic = (resp.data.apenas_aplic || []).map(a => {
+    const dtAplic = parseToDate(a.dataAPLIC || a.dataaplic || a['Data Abertura']);
+    return {
+      orgao:      a.orgao || a.UG || a.orgao_aplic || '',
+      modalidade: a.modalidade || a.Modalidade || '',
+      numero:     a.numero || a['Nº Licitação'] || '',
+      ano:        String(a.ano || a['Exercício'] || a['Exerc\u00e9cio'] || ''),
+      objeto:     a.objeto || a.Objetivo || a.Motivo || '',
+      valor:      a.valor !== undefined ? a.valor : (a.valor_aplic !== undefined ? a.valor_aplic : (a['Valor Estimado'] || a['Valor Vencedor'])),
+      cnpj:       a.cnpj || a.cnpj_mapeado || '',
+      dataAPLIC:  dtAplic,
+      statusPNCP: 'N', statusAPLIC: 'S',
+      municipio:  currentMunKey
+    };
+  });
+
+  monitorCache = { ambos, apenas_pncp, apenas_aplic };
+  
+  // Chip state
+  const chip = document.getElementById('fonte-chip');
+  chip.textContent = 'Cruzamento concluído';
+  chip.className = 'fonte-chip analise';
+
+  // Last update timestamp
+  const now = new Date();
+  document.getElementById('ultima-atualizacao').textContent = `Cruzado: ${now.toLocaleTimeString('pt-BR')}`;
+
+  // Populate dynamic select filter for Orgaos
+  updateOrgaoFilterOptions();
+
+  renderAll(monitorCache);
+
+  // Auto-switch to the tab with data
+  if (ambos.length > 0) {
+    switchTab('ambos', document.querySelector('.tab-btn[onclick*="ambos"]'));
+  } else if (apenas_aplic.length > 0) {
+    switchTab('apenas_aplic', document.querySelector('.tab-btn[onclick*="apenas_aplic"]'));
+  } else if (apenas_pncp.length > 0) {
+    switchTab('apenas_pncp', document.querySelector('.tab-btn[onclick*="apenas_pncp"]'));
+  } else {
+    switchTab('ambos', document.querySelector('.tab-btn[onclick*="ambos"]'));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FILTER OPTIONS & APPLIER
+// ═══════════════════════════════════════════════════════════════════════════
+function updateOrgaoFilterOptions() {
+  const orgaos = new Set();
+  const all = [...monitorCache.ambos, ...monitorCache.apenas_pncp, ...monitorCache.apenas_aplic];
+  all.forEach(item => {
+    const org = item.orgao || item.orgao_aplic;
+    if (org) orgaos.add(org.trim());
+  });
+
+  const select = document.getElementById('filter-orgao') || document.getElementById('filtro-orgao');
+  select.innerHTML = '<option value="">Todos</option>' +
+    Array.from(orgaos).sort().map(o => `<option value="${o}">${o}</option>`).join('');
+}
+
+function applyFiltros(docs) {
+  return docs.filter(d => {
+    // Entity
+    if (orgaoFiltro && (d.orgao || d.orgao_aplic || '').trim() !== orgaoFiltro.trim()) return false;
+    
+    // Search filter
+    if (searchFiltro) {
+      const searchLower = searchFiltro.toLowerCase();
+      const num = String(d.numero || '').toLowerCase();
+      const obj = String(d.objeto || d.objeto_aplic || '').toLowerCase();
+      if (!num.includes(searchLower) && !obj.includes(searchLower)) return false;
+    }
+    
+    return true;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CARDS & TABLES RENDERING
+// ═══════════════════════════════════════════════════════════════════════════
+function updateCards(data) {
+  const { ambos, apenas_pncp, apenas_aplic } = data;
+  const fa = applyFiltros(ambos);
+  const fp = applyFiltros(apenas_pncp);
+  const fc = applyFiltros(apenas_aplic);
+
+  document.getElementById('cnt-ambos').textContent   = fa.length;
+  document.getElementById('cnt-pncp').textContent    = fp.length;
+  document.getElementById('cnt-aplic').textContent   = fc.length;
+  document.getElementById('badge-ambos').textContent  = fa.length;
+  document.getElementById('badge-pncp').textContent   = fp.length;
+  document.getElementById('badge-aplic').textContent  = fc.length;
+
+  const alertas = fp.filter(d => d.alertaAtivo).length;
+  document.getElementById('cnt-alertas').textContent = alertas;
+
+  atualizarResumoMunicipio(fa.length, fp.length, fc.length);
+}
+
+function atualizarResumoMunicipio(ambos, apenas_pncp, apenas_aplic) {
+  const el = document.getElementById('resumo-municipio');
+  const texto = document.getElementById('resumo-texto');
+
+  const total = ambos + apenas_pncp + apenas_aplic;
+  const cobertura = total > 0 ? Math.round((ambos / total) * 100) : 0;
+  
+  let evaluation = '';
+  if (cobertura >= 70)      evaluation = 'Ótima cobertura e conciliação entre APLIC e PNCP.';
+  else if (cobertura >= 40) evaluation = 'Cobertura moderada — parte dos editais encontra-se apenas em um dos sistemas.';
+  else                      evaluation = 'Baixa conciliação local. Verifique as publicações.';
+
+  texto.innerHTML =
+    `De <strong>${total}</strong> licitações identificadas no exercício ${filtroAno}: ` +
+    `<strong>${ambos}</strong> estão corretas em ambos os sistemas, ` +
+    `<strong>${apenas_aplic}</strong> aparecem apenas no APLIC (TCE) e ` +
+    `<strong>${apenas_pncp}</strong> constam apenas no portal federal (PNCP). ` +
+    `Taxa de conciliação: <strong>${cobertura}%</strong>. ${evaluation}`;
+
+  el.style.display = total > 0 ? 'block' : 'none';
+}
+
+function renderAll(data) {
+  updateCards(data);
+  renderTab(data);
+}
+
+function paginate(docs) {
+  const totalPages = Math.max(1, Math.ceil(docs.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  return { pageItems: docs.slice(start, start + PAGE_SIZE), totalPages, total: docs.length };
+}
+
+function renderPaginationControls(totalPages, total) {
+  if (total <= PAGE_SIZE) return '';
+  return `
+    <div class="pagination-wrap" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:12px;border-top:1px solid #eef0f4;font-size:.82rem;color:#555;">
+      <button class="btn btn-outline" style="padding:4px 12px;" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>‹ Anterior</button>
+      <span>Página <strong>${currentPage}</strong> de <strong>${totalPages}</strong> (${total} registros)</span>
+      <button class="btn btn-outline" style="padding:4px 12px;" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>Próxima ›</button>
+    </div>`;
+}
+
+function goToPage(page) {
+  currentPage = page;
+  renderTab(monitorCache);
+}
+
+function renderTab(data) {
+  const container = document.getElementById('table-container');
+  const { ambos, apenas_pncp, apenas_aplic } = data;
+
+  let filtered, renderer;
+  if (abaAtiva === 'ambos')            { filtered = applyFiltros(ambos);        renderer = renderAmbos; }
+  else if (abaAtiva === 'apenas_pncp') { filtered = applyFiltros(apenas_pncp);  renderer = renderApenasPncp; }
+  else                                  { filtered = applyFiltros(apenas_aplic); renderer = renderApenasAplic; }
+
+  const { pageItems, totalPages, total } = paginate(filtered);
+  container.innerHTML = renderer(pageItems) + (total > 0 ? renderPaginationControls(totalPages, total) : '');
+}
+
+function renderAmbos(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro correspondente encontrado.</div>';
+  const rows = docs.map(d => `
+    <tr>
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell">
+        <div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}"><strong>PNCP:</strong> ${d.objeto||'—'}</div>
+        ${d.objeto_aplic ? `<div class="obj-text" style="color:#555;margin-top:2px" title="${(d.objeto_aplic||'').replace(/"/g,"'")}"><strong>APLIC:</strong> ${d.objeto_aplic}</div>` : ''}
+      </td>
+      <td style="white-space:nowrap">
+        <div>${fmtValor(d.valor)}</div>
+        ${d.valor_aplic!=null ? `<div style="color:#888;font-size:.73rem">${fmtValor(d.valor_aplic)}</div>` : ''}
+      </td>
+      <td><span class="score-pill ${scoreClass(d.score_cruzamento)}">${d.score_cruzamento!=null ? Math.round(parseFloat(d.score_cruzamento)) : '—'}%</span></td>
+      <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataAPLIC)}</td>
+      <td style="font-size:.73rem;color:#666">${d.estrategia_match||'—'}</td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão PNCP</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto (PNCP / APLIC)</th>
+    <th>Valor</th><th>Score</th><th>Data PNCP</th><th>Data APLIC</th><th>Estratégia</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function renderApenasPncp(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro nesta categoria.</div>';
+  const rows = docs.map(d => `
+    <tr class="${d.alertaAtivo?'alerta':''}">
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}">${d.objeto||'—'}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataPNCP)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.prazoAplic)}</td>
+      <td>${d.alertaAtivo ? '<span class="badge-alerta" title="Publicado no PNCP há mais de 5 dias úteis e ainda sem registro no APLIC">VENCIDO</span>' : '<span class="chip chip-p">pendente</span>'}</td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+    <th>Valor</th><th>Data PNCP</th><th>Prazo APLIC</th><th>Status APLIC</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function renderApenasAplic(docs) {
+  if (!docs.length) return '<div class="state-msg">Nenhum registro nesta categoria.</div>';
+  const rows = docs.map(d => `
+    <tr>
+      <td>${d.orgao||'—'}</td>
+      <td>${d.modalidade||'—'}</td>
+      <td style="white-space:nowrap">${d.numero||'—'}/${d.ano||'—'}</td>
+      <td class="obj-cell"><div class="obj-text" title="${(d.objeto||'').replace(/"/g,"'")}">${d.objeto||'—'}</div></td>
+      <td style="white-space:nowrap">${fmtValor(d.valor)}</td>
+      <td style="white-space:nowrap">${fmtDate(d.dataAPLIC)}</td>
+      <td><span class="chip chip-n">Sem PNCP</span></td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Órgão</th><th>Modalidade</th><th>Nº/Ano</th><th>Objeto</th>
+    <th>Valor</th><th>Data APLIC</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACTIONS & UI EVENT HANDLERS
+// ═══════════════════════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  abaAtiva = name;
+  currentPage = 1;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTab(monitorCache);
+}
+
+function onMunicipioChange(val) {
+  currentMunKey = val;
+  const munName = val.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  document.getElementById('header-sub').textContent = `${munName} — MT · ${filtroAno}`;
+  
+  // Clear buffers
+  monitorCache = { ambos: [], apenas_pncp: [], apenas_aplic: [] };
+  currentPage = 1;
+
+  // Reset filters
+  orgaoFiltro = '';
+  searchFiltro = '';
+  document.getElementById('search-input').value = '';
+  updateOrgaoFilterOptions();
+  
+  document.getElementById('ultima-atualizacao').textContent = 'Pronto para Cruzamento';
+  document.getElementById('fonte-chip').textContent = '📡 Firebase (Histórico)';
+  document.getElementById('fonte-chip').className = 'fonte-chip';
+  
+  // Reset table container
+  document.getElementById('table-container').innerHTML =
+    '<div class="state-msg">Clique em <strong>Iniciar Cruzamento</strong> acima para processar dados em tempo real.</div>';
+
+  showCacheIndicator(null);
+  document.getElementById('btn-refresh').style.display = 'none';
+
+  updateCards(monitorCache);
+}
+
+function onAnoChange(val) {
+  filtroAno = val;
+  const selectMun = document.getElementById('filtro-municipio');
+  onMunicipioChange(selectMun.value);
+}
+
+function onFiltroChange(val) {
+  orgaoFiltro = val;
+  currentPage = 1;
+  renderAll(monitorCache);
+}
+
+function onSearchInput(val) {
+  searchFiltro = val;
+  currentPage = 1;
+  renderAll(monitorCache);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CSV EXPORT
+// ═══════════════════════════════════════════════════════════════════════════
+function exportCurrentTabToCSV() {
+  const data = monitorCache[abaAtiva];
+  if (!data || data.length === 0) {
+    alert('Nenhum dado disponível na aba ativa para exportação.');
+    return;
+  }
+
+  const filtered = applyFiltros(data);
+  if (filtered.length === 0) {
+    alert('Nenhum dado com os filtros aplicados.');
+    return;
+  }
+
+  // Build rows for CSV
+  const csvRows = filtered.map(item => {
+    const r = { ...item };
+    delete r.cnpj;
+    delete r.municipio;
+    delete r.alertaAtivo;
+    
+    // Format dates and numbers nicely
+    if (r.dataPNCP) r.dataPNCP = fmtDate(r.dataPNCP);
+    if (r.dataAPLIC) r.dataAPLIC = fmtDate(r.dataAPLIC);
+    if (r.prazoAplic) r.prazoAplic = fmtDate(r.prazoAplic);
+    
+    return r;
+  });
+
+  const csv = Papa.unparse(csvRows, { delimiter: ';' });
+  const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  
+  const munName = document.getElementById('filtro-municipio').value;
+  const filename = `cruzamento_aovivo_${munName}_${abaAtiva}_${filtroAno}.csv`;
+  
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+</script>
+</body>
+</html>
