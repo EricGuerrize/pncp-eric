@@ -1,73 +1,28 @@
-# React + TypeScript + Vite
+# Frontend PNCP x APLIC
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Painel React para acompanhar o cruzamento entre PNCP e APLIC consumindo a API Go em `go_pipeline/cmd/dashboard`.
 
-Currently, two official plugins are available:
+## Fluxo atual
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- O frontend nao le mais dados do Firestore.
+- A tela inicia um job assincro na API Go em `/api/live-crossmatch/start`.
+- O progresso e consultado por polling em `/api/live-crossmatch/status`.
+- O resultado e exibido em tres buckets: `ambos`, `apenas_pncp` e `apenas_aplic`.
+- O drawer de auditoria mostra score final, score por criterio e diferencas do pareamento.
 
-## React Compiler
+## Desenvolvimento
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Suba a API Go na porta `5000`.
+2. No diretorio `frontend`, instale as dependencias com `npm ci`.
+3. Rode `npm run dev`.
 
-## Expanding the ESLint configuration
+O `vite.config.ts` ja possui proxy de `/api` para `http://localhost:5000`.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Variaveis
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- `VITE_API_URL`: sobrescreve a base da API. Por padrao usa `/api/live-crossmatch`.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Observacoes
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- O prazo exibido para registros `apenas_pncp` e calculado no frontend em 5 dias uteis a partir da publicacao PNCP.
+- O arquivo legado `dashboard/live_dashboard.html` foi preservado. O React e uma trilha nova, sem quebrar o dashboard antigo.

@@ -26,15 +26,17 @@ const cacheTTL = 10 * time.Minute
 // Job tracks the progress and outcome of one asynchronous crossmatch run so the
 // frontend can poll it instead of blocking on a single multi-minute HTTP request.
 type Job struct {
-	mu       sync.Mutex
-	Status   string // running, done, error
-	Stage    string
-	Message  string
-	Current  int
-	Total    int
-	Result   map[string]interface{}
-	Error    string
-	CachedAt time.Time
+	mu        sync.Mutex
+	Status    string // running, done, error
+	Stage     string
+	Message   string
+	Current   int
+	Total     int
+	Result    map[string]interface{}
+	Error     string
+	ErrorCode string
+	ErrorHint string
+	CachedAt  time.Time
 }
 
 func (j *Job) update(stage, message string, current, total int) {
@@ -59,8 +61,12 @@ func (j *Job) finish(result map[string]interface{}, cachedAt time.Time) {
 func (j *Job) fail(err error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	code, message, hint := classifyJobError(err)
 	j.Status = "error"
 	j.Error = err.Error()
+	j.ErrorCode = code
+	j.ErrorHint = hint
+	j.Message = message
 }
 
 func (j *Job) snapshot() map[string]interface{} {
@@ -85,8 +91,33 @@ func (j *Job) snapshot() map[string]interface{} {
 	}
 	if j.Status == "error" {
 		resp["error"] = j.Error
+		resp["errorCode"] = j.ErrorCode
+		resp["errorHint"] = j.ErrorHint
 	}
 	return resp
+}
+
+func classifyJobError(err error) (code, message, hint string) {
+	raw := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(raw, "no such host"), strings.Contains(raw, "lookup "), strings.Contains(raw, "dial tcp"):
+		return "oracle_dns_unavailable",
+			"Nao foi possivel localizar o servidor Oracle do TCE.",
+			"Verifique VPN, DNS ou acesso a rede interna antes de tentar novamente."
+	case strings.Contains(raw, "timeout"), strings.Contains(raw, "i/o timeout"):
+		return "oracle_timeout",
+			"A conexao com o Oracle demorou mais do que o esperado.",
+			"Tente novamente em alguns minutos ou valide a conectividade com o banco."
+	case strings.Contains(raw, "nenhuma ug encontrada"):
+		return "oracle_no_ug",
+			"Nenhuma UG foi encontrada para o municipio informado.",
+			"Confira o nome do municipio e se ele existe na base Oracle consultada."
+	default:
+		return "crossmatch_failed",
+			"O cruzamento nao pode ser concluido.",
+			"Consulte os logs da API para ver o erro tecnico completo."
+	}
 }
 
 type cacheEntry struct {
@@ -157,7 +188,10 @@ func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(sta
 	log.Printf("[Live API] Registros PNCP encontrados para %s: %d\n", municipio, len(normalizedPncp))
 
 	report("crossmatch", "Conciliando registros do APLIC e do PNCP...", 0, 0)
-	matches, _ := crossmatch.ExecutarCruzamento(normalizedPncp, aplicData)
+	matches, err := crossmatch.ExecutarCruzamento(normalizedPncp, aplicData)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao cruzar registros: %v", err)
+	}
 
 	var ambos, apenasPncp []map[string]interface{}
 	matchMap := make(map[string]crossmatch.MatchResult)
@@ -176,6 +210,7 @@ func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(sta
 			"objeto":             p.ObjetoCompra,
 			"valor":              p.ValorTotalHomologado,
 			"cnpj":               p.OrgaoEntidadeCNPJ,
+			"numeroControlePNCP": p.NumeroControlePNCP,
 			"dataPublicacaoPncp": p.DataPublicacaoPncp.Format("2006-01-02"),
 		}
 
@@ -188,6 +223,11 @@ func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(sta
 			record["statusPNCP"] = "S"
 			record["statusAPLIC"] = "S"
 			record["match_score"] = m.ScoreComposto
+			record["score_texto"] = m.ScoreTexto
+			record["score_valor"] = m.ScoreValor
+			record["score_data"] = m.ScoreData
+			record["diff_valor_percent"] = m.DiferencaValor
+			record["diff_data_dias"] = m.DiferencaDataDias
 			record["estrategia"] = m.EstrategiaMatch
 
 			// Expõe o lado APLIC do match para permitir auditar a procedência do cruzamento.
@@ -239,6 +279,10 @@ func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(sta
 			"dataAPLIC":   dataAplic,
 			"statusAPLIC": "S",
 			"statusPNCP":  "N",
+			"match_score": m.ScoreComposto,
+			"score_texto": m.ScoreTexto,
+			"score_valor": m.ScoreValor,
+			"score_data":  m.ScoreData,
 			"estrategia":  m.EstrategiaMatch,
 		})
 	}

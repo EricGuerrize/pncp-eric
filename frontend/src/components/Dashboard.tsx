@@ -1,384 +1,410 @@
-import { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs, onSnapshot } from 'firebase/firestore';
-import { 
-  BarChart3, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Clock, 
-  FileWarning, 
-  MapPin,
-  RefreshCw
+import { useMemo, useState } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  FileWarning,
+  Play,
+  RefreshCw,
+  Scale,
+  ServerCog,
 } from 'lucide-react';
+import { useCrossmatch } from '../hooks/useCrossmatch';
+import type { Bucket, Licitacao, RunMeta } from '../types';
+import { AuditDrawer, AuditPanel } from './AuditDrawer';
+import { Filters, type FilterState } from './Filters';
+import { ProgressPanel } from './ProgressPanel';
 
-interface Licitacao {
-  id: string;
-  municipio: string;
-  orgao: string;
-  modalidade: string;
-  numero: string;
-  ano: string;
-  objeto: string;
-  valor: number | null;
-  cnpj: string;
-  statusPNCP: string;
-  statusAPLIC: string;
-  alertaAtivo?: boolean;
-  score_cruzamento?: string;
-  numeroControlePNCP?: string;
-}
-
-interface KPIValue {
-  count: number;
-  total: number;
-}
+const initialFilters: FilterState = { search: '', orgao: '', modalidade: '', prazo: '', minScore: '' };
+const money = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value);
+const date = (value?: string) => value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : '—';
+const dateTime = (value?: string) => value ? new Date(value).toLocaleString('pt-BR') : '—';
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'ambos' | 'apenas_pncp' | 'apenas_aplic'>('ambos');
-  const [municipios, setMunicipios] = useState<{id: string, nome: string}[]>([]);
-  const [selectedMun, setSelectedMun] = useState<string>('sinop');
-  
-  const [data, setData] = useState<Licitacao[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [municipio, setMunicipio] = useState('Sinop');
+  const [ano, setAno] = useState('2026');
+  const [activeTab, setActiveTab] = useState<Bucket>('ambos');
+  const [filters, setFilters] = useState(initialFilters);
+  const [selected, setSelected] = useState<Licitacao | null>(null);
+  const [copied, setCopied] = useState('');
+  const { data, progress, error, lastRun, execute } = useCrossmatch();
+  const running = progress.status === 'running';
 
-  // Stats
-  const [kpis, setKpis] = useState<{
-    ambos: KPIValue;
-    pncp: KPIValue;
-    aplic: KPIValue;
-    alertas: KPIValue;
-  }>({
-    ambos: { count: 0, total: 0 },
-    pncp: { count: 0, total: 0 },
-    aplic: { count: 0, total: 0 },
-    alertas: { count: 0, total: 0 }
-  });
+  const current = data[activeTab];
+  const orgaos = useMemo(() => unique(current.map((x) => x.orgao)), [current]);
+  const modalidades = useMemo(() => unique(current.map((x) => x.modalidade)), [current]);
+  const filtered = useMemo(() => sortItems(
+    current.filter((item) => {
+      const query = filters.search.toLocaleLowerCase('pt-BR').trim();
+      const searchable = `${item.numero} ${item.ano} ${item.orgao} ${item.objeto} ${item.cnpj}`.toLocaleLowerCase('pt-BR');
+      const scorePass = filters.minScore === '' || (filters.minScore === '0' ? (item.score || 0) < 60 : (item.score || 0) >= Number(filters.minScore));
 
-  // Load municipalities on mount
-  useEffect(() => {
-    const fetchMunicipios = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'municipios'));
-        const muns: any[] = [];
-        snap.forEach(doc => {
-          muns.push({ id: doc.id, nome: doc.data().nome || doc.id });
-        });
-        if (muns.length > 0) {
-          setMunicipios(muns);
-          if (!muns.find(m => m.id === selectedMun)) setSelectedMun(muns[0].id);
-        } else {
-          setMunicipios([{ id: 'sinop', nome: 'Sinop' }]);
-        }
-      } catch (err) {
-        console.error("Failed to fetch municipalities", err);
-      }
-    };
-    fetchMunicipios();
-  }, [selectedMun]);
+      return (!query || searchable.includes(query))
+        && (!filters.orgao || item.orgao === filters.orgao)
+        && (!filters.modalidade || item.modalidade === filters.modalidade)
+        && (!filters.prazo || item.statusPrazo === filters.prazo)
+        && scorePass;
+    }),
+    activeTab,
+  ), [activeTab, current, filters]);
 
-  // Subscribe to real-time changes
-  useEffect(() => {
-    if (!selectedMun) return;
-    setLoading(true);
+  const totals = useMemo(() => ({
+    ambos: summarize(data.ambos),
+    pncp: summarize(data.apenas_pncp),
+    aplic: summarize(data.apenas_aplic),
+    vencidos: data.apenas_pncp.filter((x) => x.statusPrazo === 'vencido').length,
+  }), [data]);
 
-    const unsubAmbos = onSnapshot(collection(db, `municipios/${selectedMun}/ambos`), (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
-      setKpis(prev => ({ ...prev, ambos: { count: items.length, total } }));
-      if (activeTab === 'ambos') { setData(items); setLoading(false); }
-    });
+  const sourceStatus = useMemo(() => buildSourceStatus(progress, lastRun), [lastRun, progress]);
 
-    const unsubPncp = onSnapshot(collection(db, `municipios/${selectedMun}/apenas_pncp`), (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
-      setKpis(prev => ({ ...prev, pncp: { count: items.length, total } }));
-      if (activeTab === 'apenas_pncp') { setData(items); setLoading(false); }
-    });
+  const submit = (force = false) => {
+    if (!municipio.trim()) return;
+    setSelected(null);
+    setFilters(initialFilters);
+    execute(municipio.trim(), ano, force);
+  };
 
-    const unsubAplic = onSnapshot(collection(db, `municipios/${selectedMun}/apenas_aplic`), (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Licitacao));
-      const total = items.reduce((acc, curr) => acc + (curr.valor || 0), 0);
-      setKpis(prev => ({ ...prev, aplic: { count: items.length, total } }));
-      if (activeTab === 'apenas_aplic') { setData(items); setLoading(false); }
-    });
-
-    return () => {
-      unsubAmbos();
-      unsubPncp();
-      unsubAplic();
-    };
-  }, [selectedMun, activeTab]);
-
-  useEffect(() => {
-    // Alertas is the sum of discrepancies (PNCP-only + APLIC-only)
-    const totalCount = kpis.pncp.count + kpis.aplic.count;
-    const totalVal = kpis.pncp.total + kpis.aplic.total;
-    setKpis(prev => ({ ...prev, alertas: { count: totalCount, total: totalVal } }));
-  }, [kpis.pncp, kpis.aplic]);
-
-  const formatCurrency = (val: number | null) => {
-    if (val === null || val === undefined) return '—';
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  const copyText = async (label: string, value: string) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(label);
+    window.setTimeout(() => setCopied(''), 1600);
   };
 
   return (
-    <div className="min-h-screen flex flex-col w-full text-slate-800 font-sans">
-      {/* Header */}
-      <header className="bg-primary-900 text-white px-6 py-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-3">
-          <BarChart3 className="w-6 h-6 text-primary-100" />
-          <div>
-            <h1 className="text-lg font-bold tracking-wide">Monitor PNCP × APLIC</h1>
-            <p className="text-xs text-primary-100 opacity-80 mt-0.5">TCE-MT Audit Dashboard</p>
+    <div className="min-h-screen bg-slate-100 text-slate-800">
+      <header className="border-b border-blue-800 bg-blue-950 text-white">
+        <div className="mx-auto flex max-w-[1500px] flex-col gap-4 px-5 py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-800 p-2">
+                <Scale />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">Monitor PNCP x APLIC</h1>
+                <p className="text-sm text-blue-200">Analise, rastreio operacional e auditoria de contratacoes publicas</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} placeholder="Municipio" className="min-w-52 rounded-lg border border-blue-700 bg-blue-900 px-3 py-2 text-sm text-white placeholder:text-blue-300" />
+              <select value={ano} onChange={(e) => setAno(e.target.value)} className="rounded-lg border border-blue-700 bg-blue-900 px-3 py-2 text-sm">
+                {[2024, 2025, 2026].map((x) => <option key={x}>{x}</option>)}
+              </select>
+              <button onClick={() => submit(false)} disabled={running || !municipio.trim()} className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-blue-900 disabled:opacity-50">
+                <Play className="h-4 w-4" /> Analisar
+              </button>
+              <button onClick={() => submit(true)} disabled={running || !municipio.trim()} title="Ignorar cache e consultar novamente" className="rounded-lg border border-blue-600 p-2 disabled:opacity-50">
+                <RefreshCw className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex bg-primary-800 rounded-md p-1 border border-primary-600/50">
-            <MapPin className="w-4 h-4 text-primary-100 m-1" />
-            <select 
-              value={selectedMun} 
-              onChange={e => setSelectedMun(e.target.value)}
-              className="bg-transparent text-sm text-white focus:outline-none pr-2 appearance-none cursor-pointer"
-            >
-              {municipios.map(m => (
-                <option key={m.id} value={m.id} className="text-slate-900">{m.nome}</option>
-              ))}
-            </select>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {sourceStatus.map((item) => <SourceBadge key={item.label} {...item} />)}
+            </div>
+            <RunSummary lastRun={lastRun} />
           </div>
         </div>
       </header>
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <KPICard 
-            title="Sincronizados" 
-            value={kpis.ambos.total} 
-            secondary={kpis.ambos.count}
-            desc="Presente no PNCP e APLIC" 
-            icon={<CheckCircle2 className="w-5 h-5 text-emerald-500" />} 
-            color="border-l-emerald-500"
-          />
-          <KPICard 
-            title="Falta no APLIC" 
-            value={kpis.pncp.total} 
-            secondary={kpis.pncp.count}
-            desc="No PNCP, mas falta no sistema local" 
-            icon={<Clock className="w-5 h-5 text-amber-500" />} 
-            color="border-l-amber-500"
-          />
-          <KPICard 
-            title="Falta no PNCP" 
-            value={kpis.aplic.total} 
-            secondary={kpis.aplic.count}
-            desc="No APLIC, mas falta no portal nacional" 
-            icon={<FileWarning className="w-5 h-5 text-orange-500" />} 
-            color="border-l-orange-500"
-          />
-          <KPICard 
-            title="Total de Inconsistências" 
-            value={kpis.alertas.total} 
-            secondary={kpis.alertas.count}
-            desc={`${kpis.pncp.count} no APLIC | ${kpis.aplic.count} no PNCP`} 
-            icon={<AlertTriangle className="w-5 h-5 text-rose-500" />} 
-            color="border-l-rose-500"
-            isAlert={kpis.alertas.count > 0}
-          />
+      <main className="mx-auto max-w-[1500px] p-5">
+        <ProgressPanel progress={progress} error={error} />
+
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Kpi title="Cruzadas" count={totals.ambos.count} value={totals.ambos.value} color="emerald" icon={<CheckCircle2 />} />
+          <Kpi title="Falta no APLIC" count={totals.pncp.count} value={totals.pncp.value} color="amber" icon={<AlertTriangle />} detail={`${totals.vencidos} vencidas`} />
+          <Kpi title="Falta no PNCP" count={totals.aplic.count} value={totals.aplic.value} color="orange" icon={<FileWarning />} />
+          <Kpi title="Cobertura" count={totals.ambos.count + totals.pncp.count + totals.aplic.count} value={coverage(totals)} color="blue" icon={<Scale />} isPercent />
         </div>
 
-        {/* Space-efficient Tabs & Search */}
-        <div className="bg-white rounded-t-lg border-b border-slate-200 px-4 pt-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div className="flex gap-2 overflow-x-auto">
-            <TabButton 
-              active={activeTab === 'ambos'} 
-              onClick={() => setActiveTab('ambos')}
-              label="Sincronizados"
-              count={kpis.ambos.count}
-            />
-            <TabButton 
-              active={activeTab === 'apenas_pncp'} 
-              onClick={() => setActiveTab('apenas_pncp')}
-              label="Apenas PNCP"
-              count={kpis.pncp.count}
-            />
-            <TabButton 
-              active={activeTab === 'apenas_aplic'} 
-              onClick={() => setActiveTab('apenas_aplic')}
-              label="Apenas APLIC"
-              count={kpis.aplic.count}
-            />
-          </div>
-          <div className="pb-2 w-full md:w-1/3">
-            <input 
-              type="text" 
-              placeholder="Buscar (órgão, objeto, valor > X)..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="bg-white rounded-b-lg border border-t-0 border-slate-200 overflow-hidden shadow-sm">
-          {loading ? (
-            <div className="p-12 text-center text-slate-400 flex flex-col items-center">
-              <RefreshCw className="w-8 h-8 animate-spin mb-3 text-primary-500" />
-              <p>Sincronizando com Firestore...</p>
-            </div>
-          ) : (() => {
-            const lowerSearch = searchTerm.toLowerCase();
-            const searchValMatch = searchTerm.match(/>\s*([\d.,]+)/);
-            const minValor = searchValMatch ? parseFloat(searchValMatch[1].replace(/\./g, '').replace(',', '.')) : null;
-
-            const filteredData = data.filter(item => {
-              if (!searchTerm) return true;
-              
-              if (minValor !== null && item.valor !== null) {
-                return item.valor >= minValor;
-              }
-
-              const isNumericExact = !isNaN(parseFloat(searchTerm.replace(',', '.')));
-              const searchVal = isNumericExact ? parseFloat(searchTerm.replace(',', '.')) : null;
-
-              if (searchVal !== null && item.valor !== null && item.valor === searchVal) {
-                return true;
-              }
-
-              return (
-                (item.objeto && item.objeto.toLowerCase().includes(lowerSearch)) ||
-                (item.orgao && item.orgao.toLowerCase().includes(lowerSearch)) ||
-                (item.numero && item.numero.toLowerCase().includes(lowerSearch)) ||
-                (item.ano && item.ano.includes(lowerSearch)) ||
-                (item.modalidade && item.modalidade.toLowerCase().includes(lowerSearch))
-              );
-            });
-
-            if (filteredData.length === 0) {
-              return (
-                <div className="p-12 text-center text-slate-400">
-                  <p>Nenhuma licitação encontrada{searchTerm ? ` para a busca "${searchTerm}"` : ''}.</p>
-                </div>
-              );
-            }
-
-            return (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Número/Ano</th>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Órgão</th>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Modalidade</th>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase w-1/3">Objeto</th>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase text-right">Valor Estimado</th>
-                      <th className="py-3 px-4 font-semibold text-xs tracking-wider uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredData.map((item) => (
-                      <tr key={item.id} className={`hover:bg-slate-50 transition-colors ${item.alertaAtivo ? 'bg-rose-50/50' : ''}`}>
-                        <td className="py-3 px-4 font-mono text-xs">{item.numero}/{item.ano}</td>
-                        <td className="py-3 px-4 font-medium text-slate-700 truncate max-w-[200px]" title={item.orgao}>{item.orgao}</td>
-                        <td className="py-3 px-4 text-slate-600">{item.modalidade}</td>
-                        <td className="py-3 px-4">
-                          <div className="truncate max-w-[300px]" title={item.objeto}>
-                            {item.numeroControlePNCP ? (
-                              <a 
-                                href={`https://pncp.gov.br/app/editais?id=${item.numeroControlePNCP}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:text-primary-800 hover:underline transition-colors font-medium"
-                              >
-                                {item.objeto}
-                              </a>
-                            ) : (
-                              <span className="text-slate-600">{item.objeto}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-slate-700">
-                          {formatCurrency(item.valor)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col gap-1 items-start">
-                            <StatusBadge type={activeTab} />
-                            {item.alertaAtivo && (
-                              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded">
-                                <AlertTriangle className="w-3 h-3" /> Vencido
-                              </span>
-                            )}
-                            {item.score_cruzamento && (
-                              <span className="text-[10px] text-slate-500" title="Score Semântico">Score: {item.score_cruzamento}</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        <div className="flex gap-5">
+          <section className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 pt-3">
+              <div className="flex overflow-x-auto">
+                <Tab active={activeTab === 'ambos'} onClick={() => setActiveTab('ambos')} label="Cruzadas" count={data.ambos.length} />
+                <Tab active={activeTab === 'apenas_pncp'} onClick={() => setActiveTab('apenas_pncp')} label="Falta no APLIC" count={data.apenas_pncp.length} />
+                <Tab active={activeTab === 'apenas_aplic'} onClick={() => setActiveTab('apenas_aplic')} label="Falta no PNCP" count={data.apenas_aplic.length} />
               </div>
-            );
-          })()}
+              {activeTab === 'ambos' && (
+                <div className="mb-3 flex flex-wrap gap-2 text-xs">
+                  <Legend label="Alta confianca" tone="emerald" />
+                  <Legend label="Revisar" tone="amber" />
+                  <Legend label="Risco alto" tone="rose" />
+                </div>
+              )}
+            </div>
+
+            <Filters value={filters} onChange={setFilters} orgaos={orgaos} modalidades={modalidades} showMatch={activeTab === 'ambos'} showPrazo={activeTab === 'apenas_pncp'} />
+
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+              <span>{filtered.length} de {current.length} registros</span>
+              <span>{copied ? `${copied} copiado` : 'Clique na linha para auditar'}</span>
+            </div>
+
+            <ResultsTable
+              items={filtered}
+              bucket={activeTab}
+              selectedId={selected?.id}
+              onSelect={setSelected}
+              onCopy={copyText}
+              onResetFilters={() => setFilters(initialFilters)}
+            />
+          </section>
+
+          <AuditPanel item={selected} bucket={activeTab} onClose={() => setSelected(null)} />
         </div>
       </main>
+
+      <AuditDrawer item={selected} bucket={activeTab} onClose={() => setSelected(null)} />
     </div>
   );
 }
 
-function KPICard({ title, value, secondary, desc, icon, color, isAlert }: any) {
-  const formatNumber = (num: number) => {
-    return num.toLocaleString('pt-BR');
-  };
-
-  const formatCurrency = (num: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-  };
+function ResultsTable({
+  items,
+  bucket,
+  selectedId,
+  onSelect,
+  onCopy,
+  onResetFilters,
+}: {
+  items: Licitacao[];
+  bucket: Bucket;
+  selectedId?: string;
+  onSelect: (item: Licitacao) => void;
+  onCopy: (label: string, value: string) => void;
+  onResetFilters: () => void;
+}) {
+  if (!items.length) {
+    return (
+      <div className="p-14 text-center text-slate-500">
+        <div className="mx-auto max-w-md space-y-3">
+          <p className="text-base font-semibold">Nenhum registro encontrado neste recorte.</p>
+          <p className="text-sm text-slate-400">Isso pode acontecer por filtros ativos, ausencia de dados na fonte ou nenhum resultado para o municipio consultado.</p>
+          <button onClick={onResetFilters} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Limpar filtros
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`bg-white rounded-lg p-5 shadow-sm border-l-4 ${color} flex items-center justify-between`}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis">{title}</h3>
-        </div>
-        <div className={`text-xl font-bold truncate ${isAlert ? 'text-rose-600' : 'text-slate-800'}`}>
-          {formatCurrency(value)}
-        </div>
-        <div className="flex flex-col mt-0.5">
-          <span className="text-xs font-semibold text-slate-500">{formatNumber(secondary)} licitações</span>
-          <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{desc}</p>
-        </div>
-      </div>
-      <div className="p-2.5 bg-slate-50 rounded-full flex-shrink-0 ml-2">
-        {icon}
-      </div>
+    <div className="max-h-[58vh] overflow-auto">
+      <table className="w-full min-w-[1120px] text-left text-sm">
+        <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="p-3">Numero/ano</th>
+            <th className="p-3">Orgao</th>
+            <th className="p-3">Modalidade</th>
+            <th className="p-3">Objeto</th>
+            <th className="p-3 text-right">Valor</th>
+            <th className="p-3">{bucket === 'ambos' ? 'Score' : bucket === 'apenas_pncp' ? 'Prazo' : 'Situacao'}</th>
+            <th className="p-3 text-right">Acoes</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <tr
+              key={item.id}
+              onClick={() => onSelect(item)}
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && onSelect(item)}
+              className={`group cursor-pointer hover:bg-blue-50 ${selectedId === item.id ? 'bg-blue-50/80 ring-1 ring-inset ring-blue-200' : ''}`}
+            >
+              <td className="whitespace-nowrap p-3 font-mono">{item.numero}/{item.ano}</td>
+              <td className="max-w-56 truncate p-3 font-medium" title={item.orgao}>{item.orgao || '—'}</td>
+              <td className="p-3 text-slate-600">{item.modalidade || '—'}</td>
+              <td className="max-w-lg p-3">
+                <div className="line-clamp-2" title={item.objeto}>{item.objeto || '—'}</div>
+              </td>
+              <td className="whitespace-nowrap p-3 text-right font-medium">{money(item.valor)}</td>
+              <td className="p-3"><Status item={item} bucket={bucket} /></td>
+              <td className="p-3">
+                <div className="flex justify-end gap-1 opacity-100 lg:opacity-0 lg:transition group-hover:opacity-100">
+                  <ActionButton label="Copiar numero" onClick={(e) => { e.stopPropagation(); void onCopy('Numero', `${item.numero}/${item.ano}`); }}>
+                    <Copy className="h-4 w-4" />
+                  </ActionButton>
+                  <ActionButton label="Copiar objeto" onClick={(e) => { e.stopPropagation(); void onCopy('Objeto', item.objeto); }}>
+                    <ServerCog className="h-4 w-4" />
+                  </ActionButton>
+                  {item.numeroControlePNCP && (
+                    <ActionButton
+                      label="Abrir no PNCP"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`https://pncp.gov.br/app/editais?id=${encodeURIComponent(item.numeroControlePNCP || '')}`, '_blank', 'noopener,noreferrer');
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </ActionButton>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function TabButton({ active, onClick, label, count }: any) {
+function ActionButton({ children, label, onClick }: { children: ReactNode; label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void }) {
   return (
-    <button 
-      onClick={onClick}
-      className={`px-5 py-2.5 text-sm font-medium rounded-t-md transition-colors border-b-2 whitespace-nowrap ${
-        active 
-          ? 'bg-white text-primary-700 border-primary-600 border-x border-t border-x-slate-200 border-t-slate-200' 
-          : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700 hover:bg-slate-50'
-      } flex items-center gap-2`}
-      style={{ marginBottom: '-1px' }}
-    >
-      {label}
-      <span className={`text-xs px-2 py-0.5 rounded-full ${active ? 'bg-primary-100 text-primary-800' : 'bg-slate-100 text-slate-500'}`}>
-        {count}
-      </span>
+    <button onClick={onClick} title={label} className="rounded-md border border-slate-200 p-2 text-slate-500 hover:border-blue-200 hover:bg-white hover:text-blue-700">
+      {children}
     </button>
   );
 }
 
-function StatusBadge({ type }: { type: string }) {
-  if (type === 'ambos') return <span className="inline-block px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded-md tracking-wider">OK / Cruzado</span>;
-  if (type === 'apenas_pncp') return <span className="inline-block px-2 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase rounded-md tracking-wider">Aguardando</span>;
-  if (type === 'apenas_aplic') return <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 text-[10px] font-bold uppercase rounded-md tracking-wider">Sem Edit. PNCP</span>;
-  return null;
+function Status({ item, bucket }: { item: Licitacao; bucket: Bucket }) {
+  if (bucket === 'ambos') {
+    const tone = scoreTone(item.score || 0);
+    return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone.className}`}>{Math.round(item.score || 0)}%</span>;
+  }
+
+  if (bucket === 'apenas_aplic') {
+    return <span className="rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-700">Sem PNCP</span>;
+  }
+
+  const labels = {
+    vencido: 'Vencido',
+    vence_hoje: 'Vence hoje',
+    aguardando: `Ate ${date(item.prazoAplic)}`,
+    sem_data: 'Sem data',
+    nao_aplicavel: '—',
+  };
+
+  const status = item.statusPrazo || 'sem_data';
+  const tone = status === 'vencido' ? 'bg-rose-100 text-rose-700' : status === 'vence_hoje' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700';
+  return <span className={`rounded-full px-2 py-1 text-xs font-bold ${tone}`}>{labels[status]}</span>;
+}
+
+function RunSummary({ lastRun }: { lastRun: RunMeta | null }) {
+  if (!lastRun) return <p className="text-sm text-blue-200">Nenhuma analise executada nesta sessao.</p>;
+
+  return (
+    <div className="text-sm text-blue-200">
+      <span className="font-semibold text-white">{lastRun.municipio}/{lastRun.ano}</span>
+      {' · '}
+      <span>{lastRun.status === 'running' ? 'em andamento' : lastRun.status === 'done' ? 'concluida' : 'com erro'}</span>
+      {' · '}
+      <span>{dateTime(lastRun.finishedAt || lastRun.startedAt)}</span>
+      {lastRun.cachedAt && <span>{' · cache de '}{dateTime(lastRun.cachedAt)}</span>}
+    </div>
+  );
+}
+
+function SourceBadge({ label, value, tone }: { label: string; value: string; tone: 'emerald' | 'amber' | 'rose' | 'blue' }) {
+  const tones = {
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+    rose: 'border-rose-200 bg-rose-50 text-rose-700',
+    blue: 'border-blue-200 bg-blue-50 text-blue-700',
+  } as const;
+
+  return (
+    <div className={`rounded-full border px-3 py-1 text-xs font-medium ${tones[tone]}`}>
+      <span className="mr-1 opacity-70">{label}:</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function Legend({ label, tone }: { label: string; tone: 'emerald' | 'amber' | 'rose' }) {
+  const color = scoreLegendClass(tone);
+  return <span className={`rounded-full px-2 py-1 font-medium ${color}`}>{label}</span>;
+}
+
+function buildSourceStatus(progress: { status: string; stage: string; errorCode?: string }, lastRun: RunMeta | null) {
+  const oracleDown = progress.errorCode?.startsWith('oracle_');
+
+  return [
+    { label: 'API', value: 'Online', tone: 'emerald' as const },
+    {
+      label: 'Oracle',
+      value: oracleDown ? 'Indisponivel' : lastRun?.status === 'done' ? 'Consultado' : progress.stage === 'ugs' || progress.stage === 'aplic' ? 'Consultando' : 'Aguardando',
+      tone: oracleDown ? 'rose' as const : lastRun?.status === 'done' ? 'emerald' as const : 'blue' as const,
+    },
+    {
+      label: 'PNCP',
+      value: progress.stage === 'pncp' ? 'Consultando' : lastRun?.status === 'done' && !oracleDown ? 'Consultado' : 'Aguardando',
+      tone: progress.stage === 'pncp' ? 'amber' as const : lastRun?.status === 'done' && !oracleDown ? 'emerald' as const : 'blue' as const,
+    },
+    {
+      label: 'Cache',
+      value: lastRun?.cachedAt ? `Usado em ${dateTime(lastRun.cachedAt)}` : 'Sem reaproveitamento',
+      tone: lastRun?.cachedAt ? 'amber' as const : 'blue' as const,
+    },
+  ];
+}
+
+const kpiColors = {
+  emerald: ['border-emerald-500', 'text-emerald-500'],
+  amber: ['border-amber-500', 'text-amber-500'],
+  orange: ['border-orange-500', 'text-orange-500'],
+  blue: ['border-blue-500', 'text-blue-500'],
+} as const;
+
+function Kpi({ title, count, value, color, icon, detail, isPercent }: { title: string; count: number; value: number; color: keyof typeof kpiColors; icon: ReactNode; detail?: string; isPercent?: boolean }) {
+  const colors = kpiColors[color];
+  return (
+    <div className={`rounded-xl border-l-4 ${colors[0]} bg-white p-4 shadow-sm`}>
+      <div className="flex justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</p>
+          <p className="mt-1 text-2xl font-bold">{isPercent ? `${value}%` : money(value)}</p>
+          <p className="text-sm text-slate-500">{count} registros{detail ? ` · ${detail}` : ''}</p>
+        </div>
+        <div className={colors[1]}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+function Tab({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
+  return <button onClick={onClick} className={`whitespace-nowrap border-b-2 px-5 py-3 text-sm font-semibold ${active ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500'}`}>{label} <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs">{count}</span></button>;
+}
+
+function summarize(items: Licitacao[]) {
+  return { count: items.length, value: items.reduce((sum, item) => sum + item.valor, 0) };
+}
+
+function unique(values: string[]) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function coverage(t: { ambos: { count: number }; pncp: { count: number }; aplic: { count: number } }) {
+  const total = t.ambos.count + t.pncp.count + t.aplic.count;
+  return total ? Math.round((t.ambos.count / total) * 100) : 0;
+}
+
+function sortItems(items: Licitacao[], bucket: Bucket) {
+  return [...items].sort((a, b) => {
+    if (bucket === 'ambos') return (a.score || 0) - (b.score || 0);
+    if (bucket === 'apenas_pncp') {
+      const order = { vencido: 0, vence_hoje: 1, aguardando: 2, sem_data: 3, nao_aplicavel: 4 } as const;
+      const left = order[a.statusPrazo || 'sem_data'];
+      const right = order[b.statusPrazo || 'sem_data'];
+      if (left !== right) return left - right;
+      return (a.diasUteisRestantes ?? 999) - (b.diasUteisRestantes ?? 999);
+    }
+    return b.valor - a.valor;
+  });
+}
+
+function scoreTone(score: number) {
+  if (score >= 85) return { className: scoreLegendClass('emerald') };
+  if (score >= 70) return { className: scoreLegendClass('amber') };
+  return { className: scoreLegendClass('rose') };
+}
+
+function scoreLegendClass(tone: 'emerald' | 'amber' | 'rose') {
+  if (tone === 'emerald') return 'bg-emerald-100 text-emerald-700';
+  if (tone === 'amber') return 'bg-amber-100 text-amber-700';
+  return 'bg-rose-100 text-rose-700';
 }
