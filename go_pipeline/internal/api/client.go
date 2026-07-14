@@ -112,3 +112,13 @@ func (c *Client) GetContratacoesPorCNPJ(dataInicial, dataFinal, cnpj string, cod
 		dataInicial, dataFinal, codModalidade, pagina, config.TamanhoPagina, cnpj)
 	return c.doRequest(url)
 }
+
+// GetContratacoesPorMunicipio fetches PNCP paginated response scoped to a single município
+// via its 7-digit IBGE code — the API's own documented codigoMunicipioIbge filter — so a
+// município's data can be queried directly without knowing any of its entities' CNPJs first.
+func (c *Client) GetContratacoesPorMunicipio(dataInicial, dataFinal, codigoIbge string, codModalidade, pagina int) (*models.PNCPResponse, error) {
+	url := fmt.Sprintf("%s%s?dataInicial=%s&dataFinal=%s&codigoModalidadeContratacao=%d&pagina=%d&tamanhoPagina=%d&uf=%s&codigoMunicipioIbge=%s",
+		config.PNCPBaseURL, config.ContratacoesEndpoint,
+		dataInicial, dataFinal, codModalidade, pagina, config.TamanhoPagina, config.UF, codigoIbge)
+	return c.doRequest(url)
+}

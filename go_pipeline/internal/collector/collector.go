@@ -232,3 +232,100 @@ func (c *Collector) CollectByCNPJs(cnpjs []string, dataInicial, dataFinal string
 
 	return allResults
 }
+
+// CollectByMunicipio fetches pages across all modalities concurrently for a single município,
+// scoped via PNCP's own codigoMunicipioIbge filter. This needs no CNPJ knowledge at all and,
+// because it's scoped to one município instead of the whole UF, needs far fewer requests than
+// a statewide bulk fetch — the right default for a single município's live crossmatch.
+func (c *Collector) CollectByMunicipio(codigoIbge, dataInicial, dataFinal string, onProgress ProgressFunc) []CollectResult {
+	var allResults []CollectResult
+	var mu sync.Mutex
+
+	sem := make(chan struct{}, config.MaxConcurrentRequests)
+	var wg sync.WaitGroup
+
+	total := len(config.Modalidades)
+	done := 0
+	report := func() {
+		if onProgress == nil {
+			return
+		}
+		mu.Lock()
+		done++
+		d, t := done, total
+		mu.Unlock()
+		onProgress(d, t)
+	}
+
+	log.Printf("Buscando a primeira página de cada modalidade para o município IBGE %s...\n", codigoIbge)
+
+	var firstPassResults []CollectResult
+	for modCode := range config.Modalidades {
+		wg.Add(1)
+		go func(mod int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			resp, err := c.client.GetContratacoesPorMunicipio(dataInicial, dataFinal, codigoIbge, mod, 1)
+
+			mu.Lock()
+			firstPassResults = append(firstPassResults, CollectResult{
+				Modalidade: mod,
+				Pagina:     1,
+				Response:   resp,
+				Error:      err,
+			})
+			mu.Unlock()
+			report()
+		}(modCode)
+	}
+	wg.Wait()
+
+	allResults = append(allResults, firstPassResults...)
+
+	type pageReq struct {
+		ModCode int
+		Page    int
+	}
+	var remainingPages []pageReq
+
+	for _, result := range firstPassResults {
+		if result.Error == nil && result.Response != nil && result.Response.TotalPaginas > 1 {
+			for p := 2; p <= result.Response.TotalPaginas; p++ {
+				remainingPages = append(remainingPages, pageReq{ModCode: result.Modalidade, Page: p})
+			}
+		}
+	}
+
+	if len(remainingPages) > 0 {
+		mu.Lock()
+		total += len(remainingPages)
+		mu.Unlock()
+
+		log.Printf("Buscando as %d páginas restantes para o município IBGE %s...\n", len(remainingPages), codigoIbge)
+		for _, req := range remainingPages {
+			wg.Add(1)
+			go func(req pageReq) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				resp, err := c.client.GetContratacoesPorMunicipio(dataInicial, dataFinal, codigoIbge, req.ModCode, req.Page)
+
+				mu.Lock()
+				allResults = append(allResults, CollectResult{
+					Modalidade: req.ModCode,
+					Pagina:     req.Page,
+					Response:   resp,
+					Error:      err,
+				})
+				mu.Unlock()
+				report()
+			}(req)
+		}
+		wg.Wait()
+	}
+
+	return allResults
+}

@@ -38,8 +38,11 @@ const (
 
 // Query Parameters
 const (
-	UF             = "MT"
-	TamanhoPagina  = 50
+	UF = "MT"
+	// TamanhoPagina: despite the manual advertising a limit of up to 500, the deployed
+	// /contratacoes/publicacao endpoint rejects anything above 50 with "Tamanho de página
+	// inválido" (confirmed empirically), so 50 is the real usable maximum here.
+	TamanhoPagina = 50
 )
 
 // Concurrency & Retry Settings

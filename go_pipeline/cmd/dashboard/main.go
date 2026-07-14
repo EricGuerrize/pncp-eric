@@ -18,68 +18,10 @@ import (
 	"github.com/ericguerrize/pncp-go/internal/config"
 	"github.com/ericguerrize/pncp-go/internal/crossmatch"
 	"github.com/ericguerrize/pncp-go/internal/db"
-	"github.com/ericguerrize/pncp-go/internal/models"
 	"github.com/ericguerrize/pncp-go/internal/processor"
 )
 
 const cacheTTL = 10 * time.Minute
-
-// statewideTTL is longer than cacheTTL: the statewide PNCP fetch (~500 requests covering
-// every município in MT) is much more expensive than a single município's crossmatch, so
-// it's worth reusing across município requests for longer.
-const statewideTTL = 60 * time.Minute
-
-type statewideEntry struct {
-	Records  []models.ProcessedCompra
-	FetchedAt time.Time
-}
-
-var (
-	statewideMu    sync.Mutex
-	statewideCache = make(map[string]*statewideEntry) // keyed by ano
-)
-
-// getStatewideRecords returns every PNCP compra published in MT for anoStr, fetching and
-// caching the whole state in one pass so that looking up any município never needs to know
-// its entities' CNPJs upfront — the município name comes back on each PNCP record itself.
-func getStatewideRecords(anoStr string, force bool, report func(stage, message string, current, total int)) ([]models.ProcessedCompra, error) {
-	if !force {
-		statewideMu.Lock()
-		entry, ok := statewideCache[anoStr]
-		statewideMu.Unlock()
-		if ok && time.Since(entry.FetchedAt) < statewideTTL {
-			report("pncp", fmt.Sprintf("Usando índice estadual em cache (%s, %d registros)...", anoStr, len(entry.Records)), 0, 0)
-			return entry.Records, nil
-		}
-	}
-
-	report("pncp", fmt.Sprintf("Baixando contratações do estado inteiro (MT/%s)...", anoStr), 0, len(config.Modalidades))
-	apiClient := api.NewClient()
-	col := collector.NewCollector(apiClient)
-	dataInicial := anoStr + "0101"
-	dataFinal := anoStr + "1231"
-	raw := col.CollectAllData(dataInicial, dataFinal, func(done, total int) {
-		report("pncp", fmt.Sprintf("Baixando o índice estadual do PNCP... (%d/%d requisições)", done, total), done, total)
-	})
-
-	records := processor.NormalizeResults(raw, time.Now())
-	log.Printf("[Live API] Índice estadual PNCP (%s): %d registros em %d municípios\n",
-		anoStr, len(records), countMunicipios(records))
-
-	statewideMu.Lock()
-	statewideCache[anoStr] = &statewideEntry{Records: records, FetchedAt: time.Now()}
-	statewideMu.Unlock()
-
-	return records, nil
-}
-
-func countMunicipios(records []models.ProcessedCompra) int {
-	seen := make(map[string]bool)
-	for _, r := range records {
-		seen[crossmatch.NormalizeMunicipio(r.MunicipioNome)] = true
-	}
-	return len(seen)
-}
 
 // Job tracks the progress and outcome of one asynchronous crossmatch run so the
 // frontend can poll it instead of blocking on a single multi-minute HTTP request.
@@ -172,9 +114,12 @@ func cacheKey(municipio, ano string) string {
 
 // executeCrossmatch runs the full Oracle (APLIC) + PNCP crossmatch for a município/ano,
 // reporting progress through onProgress (which may be nil for synchronous callers). The PNCP
-// side comes from the statewide índice (see getStatewideRecords), so it works for any
-// município in MT regardless of whether we know its entities' CNPJs — CNPJ is only used as a
-// secondary matching signal, never to decide which PNCP data to fetch.
+// side is fetched scoped directly to the município via PNCP's own codigoMunicipioIbge filter
+// (derived from Oracle's MUN_CODIGO, see db.MunCodigoToIbge), so it works for any município in
+// MT without needing to know any of its entities' CNPJs upfront — CNPJ is only used as a
+// secondary matching signal (Tier 2), never to decide which PNCP data to fetch. force is
+// accepted for API symmetry with the job cache in main(); the PNCP fetch itself is never cached
+// beyond that.
 func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(stage, message string, current, total int)) (map[string]interface{}, error) {
 	report := func(stage, message string, current, total int) {
 		log.Printf("[Live API][%s] %s\n", stage, message)
@@ -183,25 +128,33 @@ func executeCrossmatch(municipio, anoStr string, force bool, onProgress func(sta
 		}
 	}
 
+	report("ugs", fmt.Sprintf("Descobrindo UGs no Oracle TCE para %s...", municipio), 0, 0)
+	ugsInfo, err := db.DescobrirUGs(municipio)
+	if err != nil || len(ugsInfo) == 0 {
+		return nil, fmt.Errorf("erro ou nenhuma UG encontrada: %v", err)
+	}
+	codigoIbge := ugsInfo[0].CodigoIbge
+	if codigoIbge == "" {
+		return nil, fmt.Errorf("não foi possível determinar o código IBGE do município %s", municipio)
+	}
+
 	report("aplic", fmt.Sprintf("Extraindo licitações do APLIC para %s...", municipio), 0, 0)
 	aplicData, err := crossmatch.CarregarAplicOracleAoVivo(municipio, anoStr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ou nenhuma UG encontrada: %v", err)
+		return nil, fmt.Errorf("erro ao extrair APLIC: %v", err)
 	}
 
-	statewide, err := getStatewideRecords(anoStr, force, report)
-	if err != nil {
-		return nil, fmt.Errorf("erro ao consultar o PNCP: %v", err)
-	}
+	report("pncp", fmt.Sprintf("Consultando o PNCP para %s (IBGE %s)...", municipio, codigoIbge), 0, len(config.Modalidades))
+	apiClient := api.NewClient()
+	col := collector.NewCollector(apiClient)
+	dataInicial := anoStr + "0101"
+	dataFinal := anoStr + "1231"
+	rawResults := col.CollectByMunicipio(codigoIbge, dataInicial, dataFinal, func(done, total int) {
+		report("pncp", fmt.Sprintf("Consultando o PNCP... (%d/%d requisições)", done, total), done, total)
+	})
 
-	targetMun := crossmatch.NormalizeMunicipio(municipio)
-	var normalizedPncp []models.ProcessedCompra
-	for _, p := range statewide {
-		if crossmatch.NormalizeMunicipio(p.MunicipioNome) == targetMun {
-			normalizedPncp = append(normalizedPncp, p)
-		}
-	}
-	log.Printf("[Live API] Registros PNCP encontrados para %s: %d (de %d no estado)\n", municipio, len(normalizedPncp), len(statewide))
+	normalizedPncp := processor.NormalizeResults(rawResults, time.Now())
+	log.Printf("[Live API] Registros PNCP encontrados para %s: %d\n", municipio, len(normalizedPncp))
 
 	report("crossmatch", "Conciliando registros do APLIC e do PNCP...", 0, 0)
 	matches, _ := crossmatch.ExecutarCruzamento(normalizedPncp, aplicData)

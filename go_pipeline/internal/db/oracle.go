@@ -38,9 +38,45 @@ func normalizarParaOracle(texto string) string {
 }
 
 type UGInfo struct {
-	UGCode string
-	Nome   string
-	CNPJ   string
+	UGCode      string
+	Nome        string
+	CNPJ        string
+	CodigoIbge  string // 7-digit IBGE município code, derived from Oracle's 6-digit MUN_CODIGO
+}
+
+// ibgeCheckDigit computes the 7th (verification) digit of a Brazilian município IBGE code
+// from its 6-digit base, using the standard alternating 1-2 weighted mod-10 algorithm.
+// e.g. Sinop's Oracle MUN_CODIGO "510790" -> check digit "9" -> full IBGE code "5107909".
+func ibgeCheckDigit(base string) (string, bool) {
+	if len(base) != 6 {
+		return "", false
+	}
+	sum := 0
+	weights := [6]int{1, 2, 1, 2, 1, 2}
+	for i, r := range base {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+		d := int(r - '0')
+		p := d * weights[i]
+		if p >= 10 {
+			p = p/10 + p%10
+		}
+		sum += p
+	}
+	check := (10 - (sum % 10)) % 10
+	return fmt.Sprintf("%d", check), true
+}
+
+// MunCodigoToIbge converts Oracle's 6-digit MUN_CODIGO into the full 7-digit IBGE
+// município code expected by PNCP's codigoMunicipioIbge query parameter.
+func MunCodigoToIbge(munCodigo string) string {
+	munCodigo = strings.TrimSpace(munCodigo)
+	check, ok := ibgeCheckDigit(munCodigo)
+	if !ok {
+		return ""
+	}
+	return munCodigo + check
 }
 
 func DescobrirUGs(municipio string) ([]UGInfo, error) {
@@ -54,14 +90,15 @@ func DescobrirUGs(municipio string) ([]UGInfo, error) {
 		SELECT DISTINCT
 			TRIM(TO_CHAR(E.CNPJ_CPF_COD_TCE_ENTIDADE)) AS ug_code,
 			E.NOME_entidade AS nome,
-			E.CNPJ_DIREITO_PUBLICO AS cnpj_publico
+			E.CNPJ_DIREITO_PUBLICO AS cnpj_publico,
+			TRIM(TO_CHAR(E.MUN_CODIGO)) AS mun_codigo
 		FROM aplic2008.ENTIDADE@conectprod E
 		JOIN publico.MUNICIPIO@conectprod MN ON MN.MUN_CODIGO = E.MUN_CODIGO
 		WHERE TRANSLATE(UPPER(MN.MUN_NOME),
 			  'ÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ',
 			  'AAAAAEEEEIIIIOOOOOOUUUUC') LIKE :1
 	`
-	
+
 	busca := fmt.Sprintf("%%%s%%", normalizarParaOracle(municipio))
 	rows, err := db.Query(query, busca)
 	if err != nil {
@@ -71,9 +108,9 @@ func DescobrirUGs(municipio string) ([]UGInfo, error) {
 
 	var ugs []UGInfo
 	for rows.Next() {
-		var ug, nome string
+		var ug, nome, munCodigo string
 		var cnpj sql.NullString
-		if err := rows.Scan(&ug, &nome, &cnpj); err == nil {
+		if err := rows.Scan(&ug, &nome, &cnpj, &munCodigo); err == nil {
 
 			// Clean CNPJ to digits only
 			cleanCNPJ := strings.Map(func(r rune) rune {
@@ -91,9 +128,10 @@ func DescobrirUGs(municipio string) ([]UGInfo, error) {
 			}
 
 			ugs = append(ugs, UGInfo{
-				UGCode: ug,
-				Nome: nome,
-				CNPJ: cleanCNPJ,
+				UGCode:     ug,
+				Nome:       nome,
+				CNPJ:       cleanCNPJ,
+				CodigoIbge: MunCodigoToIbge(munCodigo),
 			})
 		}
 	}

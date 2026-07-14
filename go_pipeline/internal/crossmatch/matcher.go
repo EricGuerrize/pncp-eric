@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrg/strutil"
-	"github.com/adrg/strutil/metrics"
 	"github.com/ericguerrize/pncp-go/internal/db"
 	"github.com/ericguerrize/pncp-go/internal/models"
 )
@@ -22,21 +20,65 @@ type MatchResult struct {
 	EstrategiaMatch  string
 }
 
-// TokenSortRatio approximates the Python rapidfuzz token_sort_ratio
-func TokenSortRatio(a, b string) float64 {
-	sa := strings.Fields(strings.ToLower(a))
-	sb := strings.Fields(strings.ToLower(b))
-	strA := strings.Join(sa, " ")
-	strB := strings.Join(sb, " ")
-	
-	dist := strutil.Similarity(strA, strB, metrics.NewJaroWinkler())
-	return dist * 100.0
+// objetoStopwords are connector words and procurement boilerplate that appear in nearly
+// every objeto text regardless of what's actually being contracted ("CONTRATAÇÃO DE EMPRESA
+// ESPECIALIZADA...DE ACORDO COM OS TERMOS E ESPECIFICAÇÕES DO EDITAL..."). Left in, they
+// made character-level string similarity (Jaro-Winkler) score unrelated objects (e.g. a public
+// safety center vs. a health clinic) above 85% purely on shared framing — confirmed against
+// real Sinop data where that produced false-positive matches. Stripping them and comparing the
+// remaining distinctive words directly is far more discriminative for this kind of text.
+var objetoStopwords = map[string]bool{}
+
+func init() {
+	for _, w := range strings.Fields(
+		"de da do das dos em no na nos nas para por com sem sob sobre entre ate apos ante e ou que se a o as os um uma uns umas ao aos " +
+			"contratacao empresa especializada especializado municipio " +
+			"conforme acordo termos especificacoes edital seus suas anexos " +
+			"prestacao servicos execucao fim atender atendendo necessidades " +
+			"secretaria municipal publica publico referente referentes objeto " +
+			"presente processo sistema origem mt regime diversos diversas locais") {
+		objetoStopwords[w] = true
+	}
+}
+
+// SimilaridadeObjeto scores two objeto texts by the Jaccard overlap of their distinctive
+// (non-boilerplate) words — the fraction of meaningful words they share — rather than raw
+// character similarity, so two texts sharing only administrative boilerplate score near zero.
+func SimilaridadeObjeto(a, b string) float64 {
+	setA := distinctiveWords(a)
+	setB := distinctiveWords(b)
+	if len(setA) == 0 || len(setB) == 0 {
+		return 0
+	}
+
+	intersection := 0
+	union := make(map[string]bool, len(setA)+len(setB))
+	for w := range setA {
+		union[w] = true
+		if setB[w] {
+			intersection++
+		}
+	}
+	for w := range setB {
+		union[w] = true
+	}
+
+	return float64(intersection) / float64(len(union)) * 100.0
+}
+
+func distinctiveWords(s string) map[string]bool {
+	words := make(map[string]bool)
+	for _, w := range strings.Fields(normalizarTexto(s)) {
+		if len(w) < 3 || objetoStopwords[w] {
+			continue
+		}
+		words[w] = true
+	}
+	return words
 }
 
 func normalizarTexto(s string) string {
-	s = strings.ToLower(s)
-	// Add stop word removals here if needed to replicate python exact logic
-	return strings.TrimSpace(s)
+	return accentReplacer.Replace(strings.ToLower(strings.TrimSpace(s)))
 }
 
 var accentReplacer = strings.NewReplacer(
@@ -88,9 +130,9 @@ func ExecutarCruzamento(pncpRecords []models.ProcessedCompra, aplicRecords []Apl
 			}
 			
 			objAplicNorm := normalizarTexto(aplic.Objetivo)
-			score := TokenSortRatio(objPncpNorm, objAplicNorm)
-			
-			if score >= 85 {
+			score := SimilaridadeObjeto(objPncpNorm, objAplicNorm)
+
+			if score >= 40 {
 				// verify financial
 				valAplic := aplic.ValorEstimado
 				if valPncp > 0 && valAplic > 0 {
@@ -154,13 +196,10 @@ func ExecutarCruzamento(pncpRecords []models.ProcessedCompra, aplicRecords []Apl
 
 			// CNPJ e data próxima sozinhos não bastam: um mesmo órgão publica várias
 			// licitações distintas na mesma janela de dias. Exige-se uma similaridade
-			// mínima de objeto para descartar pares claramente não relacionados.
-			// A similaridade Jaro-Winkler em textos administrativos longos é pouco
-			// discriminante: pares de objetos totalmente diferentes já pontuaram 70-73
-			// nos testes (contra 94-96 de pares realmente iguais). Por isso o piso
-			// fica bem acima do ruído, próximo ao limiar do Tier 1.
-			textScore := TokenSortRatio(objPncpNorm, normalizarTexto(aplic.Objetivo))
-			if textScore < 80 {
+			// mínima de objeto (por palavras distintivas, não por caracteres) para
+			// descartar pares claramente não relacionados.
+			textScore := SimilaridadeObjeto(objPncpNorm, normalizarTexto(aplic.Objetivo))
+			if textScore < 30 {
 				continue
 			}
 
