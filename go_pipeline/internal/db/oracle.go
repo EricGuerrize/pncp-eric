@@ -31,9 +31,20 @@ func getOracleConn() (*sql.DB, error) {
 	return sql.Open("oracle", connStr)
 }
 
+var accentReplacer = strings.NewReplacer(
+	"Á", "A", "À", "A", "Ã", "A", "Â", "A", "Ä", "A",
+	"É", "E", "È", "E", "Ê", "E", "Ë", "E",
+	"Í", "I", "Ì", "I", "Î", "I", "Ï", "I",
+	"Ó", "O", "Ò", "O", "Õ", "O", "Ô", "O", "Ö", "O",
+	"Ú", "U", "Ù", "U", "Û", "U", "Ü", "U",
+	"Ç", "C",
+)
+
+// normalizarParaOracle uppercases and strips accents so the search term matches the
+// TRANSLATE(...)-stripped MUN_NOME column below — otherwise a query for "Cuiabá" (typed
+// with the accent) never matches the accent-stripped "CUIABA" stored/compared in Oracle.
 func normalizarParaOracle(texto string) string {
-	s := strings.ToUpper(texto)
-	// Add proper normalization as needed, removing accents
+	s := accentReplacer.Replace(strings.ToUpper(texto))
 	return strings.TrimSpace(s)
 }
 

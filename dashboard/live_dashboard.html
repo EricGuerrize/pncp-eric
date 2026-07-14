@@ -3,222 +3,247 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Real-Time Crossmatch | PNCP × APLIC</title>
+  <title>Monitor PNCP × APLIC — TCE-MT</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --ink: #1a3a6b;
+      --ink-soft: #245093;
+      --paper: #ffffff;
+      --surface: #ffffff;
+      --line: #dde1ea;
+      --line-soft: #eef0f4;
+      --muted: #555555;
+      --faint: #888888;
+      --ok: #28a745;
+      --ok-bg: #d4edda;
+      --warn: #b8860b;
+      --warn-bg: #fff3cd;
+      --danger: #dc3545;
+      --danger-bg: #f8d7da;
+      --focus: #1a3a6b;
+      --shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #e8ecf5;
+        --ink-soft: #aac0ea;
+        --paper: #14161c;
+        --surface: #1c1f27;
+        --line: #2c303b;
+        --line-soft: #262a33;
+        --muted: #a4aab8;
+        --faint: #767c8a;
+        --ok: #4caf6a;
+        --ok-bg: #1e3324;
+        --warn: #d6a238;
+        --warn-bg: #3a2f14;
+        --danger: #e2707c;
+        --danger-bg: #3a1f22;
+        --focus: #6f97e0;
+        --shadow: 0 1px 4px rgba(0,0,0,.3);
+      }
+    }
+
+    html { background: var(--paper); }
+
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
-      background: #f0f2f5;
-      color: #1a1a2e;
+      background: var(--paper);
+      color: var(--ink);
       min-height: 100vh;
     }
 
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
     /* ── Header ──────────────────────────────────────────── */
     header {
-      background: #1a3a6b;
-      color: #fff;
-      padding: 14px 32px;
+      background: var(--ink);
+      color: var(--paper);
+      padding: 18px 32px;
       display: flex;
-      align-items: center;
+      align-items: baseline;
       justify-content: space-between;
-      box-shadow: 0 2px 8px rgba(0,0,0,.25);
       gap: 16px;
+      border-bottom: 3px solid var(--focus);
     }
-    header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: .3px; }
-    header .sub { font-size: .78rem; opacity: .75; margin-top: 2px; }
-    .header-right { display: flex; align-items: center; gap: 20px; }
-    #ultima-atualizacao { font-size: .75rem; opacity: .65; text-align: right; white-space: nowrap; }
+    header h1 { font-size: 1.35rem; letter-spacing: .2px; }
+    header .sub { font-family: Consolas, 'Courier New', monospace; font-size: .74rem; opacity: .72; margin-top: 4px; letter-spacing: .2px; }
+    .header-right { display: flex; align-items: baseline; gap: 20px; }
+    #ultima-atualizacao { font-family: Consolas, 'Courier New', monospace; font-size: .72rem; opacity: .68; text-align: right; white-space: nowrap; }
 
     /* ── Painel de Análise ────────────────────────────────── */
     .painel {
-      background: #fff;
-      border-bottom: 2px solid #c5cad8;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
     }
     .painel-header {
-      padding: 11px 32px;
+      padding: 12px 32px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: .88rem;
+      font-size: .78rem;
       font-weight: 600;
-      color: #1a3a6b;
-      border-bottom: 1px solid #eef0f4;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line-soft);
     }
-    .painel-header .tag {
-      display: inline-block;
-      background: #e8edf5;
-      color: #1a3a6b;
-      border-radius: 10px;
-      font-size: .68rem;
-      padding: 2px 8px;
-      margin-left: 8px;
-      font-weight: 600;
-      vertical-align: middle;
-    }
-    #painel-body { padding: 20px 32px 24px; }
+    #painel-body { padding: 18px 32px 22px; }
 
     .steps {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
+      gap: 0;
+      border: 1px solid var(--line);
     }
     @media (max-width: 768px) { .steps { grid-template-columns: 1fr; } }
 
     .step {
-      border: 1.5px solid #dde1ea;
-      border-radius: 10px;
-      padding: 14px;
-      background: #fafbfd;
-      transition: all 0.2s;
+      border-left: 1px solid var(--line);
+      padding: 12px 14px;
+      background: var(--surface);
+      transition: background .2s, border-color .2s;
     }
-    .step.active { border-color: #1a3a6b; background: #f5f7fb; }
-    .step.done   { border-color: #28a745; background: #f8fff9; }
-    .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    
+    .step:first-child { border-left: none; }
+    .step.active { background: var(--paper); }
+    .step.active .step-num { color: var(--focus); border-color: var(--focus); }
+    .step.done   .step-num { color: var(--ok); border-color: var(--ok); }
+    .step-header { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+
     .step-num {
-      width: 28px; height: 28px;
+      width: 22px; height: 22px;
       border-radius: 50%;
-      background: #dde1ea;
-      color: #666;
-      font-size: .8rem;
-      font-weight: 700;
+      border: 1.5px solid var(--faint);
+      color: var(--faint);
+      font-family: Consolas, 'Courier New', monospace;
+      font-size: .72rem;
+      font-weight: 500;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
       transition: all 0.2s;
     }
-    .step.active .step-num { background: #1a3a6b; color: #fff; }
-    .step.done   .step-num { background: #28a745; color: #fff; }
-    .step-title { font-weight: 600; font-size: .84rem; color: #333; }
-    .step-desc { font-size: .74rem; color: #777; line-height: 1.3; }
+    .step-title { font-weight: 600; font-size: .82rem; color: var(--ink); }
+    .step-desc { font-size: .72rem; color: var(--muted); line-height: 1.3; }
 
-    .btn { border: none; border-radius: 6px; padding: 7px 14px; font-size: .82rem; cursor: pointer; font-weight: 500; transition: background .15s, opacity .15s; }
-    .btn:disabled { opacity: .4; cursor: not-allowed; }
-    .btn-primary { background: #1a3a6b; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #245093; }
-    .btn-live { background: #1a3a6b; color: #fff; font-weight: 600; }
-    .btn-live:hover:not(:disabled) { background: #245093; }
-    .btn-outline { background: #fff; border: 1.5px solid #1a3a6b; color: #1a3a6b; }
-    .btn-outline:hover:not(:disabled) { background: #f0f4fa; }
+    .btn { border: 1px solid transparent; border-radius: 3px; padding: 8px 16px; font-size: .82rem; font-family: inherit; cursor: pointer; font-weight: 600; transition: background .15s, opacity .15s, border-color .15s; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: var(--ink); color: var(--paper); }
+    .btn-primary:hover:not(:disabled) { background: var(--ink-soft); }
+    .btn-live { background: var(--focus); color: #fff; }
+    .btn-live:hover:not(:disabled) { background: var(--ink-soft); }
+    .btn-outline { background: transparent; border-color: var(--ink); color: var(--ink); }
+    .btn-outline:hover:not(:disabled) { background: var(--paper); }
 
     .progress-wrap { margin-top: 14px; }
     .progress-bar {
-      height: 6px;
-      background: #dde1ea;
-      border-radius: 3px;
+      height: 3px;
+      background: var(--line);
       overflow: hidden;
     }
     .progress-fill {
       height: 100%;
-      background: #1a3a6b;
-      border-radius: 3px;
+      background: var(--focus);
       transition: width .2s;
       width: 0%;
     }
-    .progress-text { font-size: .75rem; color: #666; margin-top: 4px; }
+    .progress-text { font-family: Consolas, 'Courier New', monospace; font-size: .72rem; color: var(--muted); margin-top: 5px; }
 
     /* ── Toolbar ──────────────────────────────────────────── */
     .toolbar {
-      background: #fff;
-      border-bottom: 1px solid #dde1ea;
-      padding: 9px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 10px 32px;
       display: flex;
       align-items: center;
       gap: 12px;
       flex-wrap: wrap;
     }
-    .toolbar label { font-size: .85rem; font-weight: 500; color: #555; }
+    .toolbar label { font-size: .8rem; font-weight: 500; color: var(--muted); }
     .toolbar select, .toolbar input[type=text] {
-      border: 1px solid #c5cad8;
-      border-radius: 6px;
-      padding: 5px 10px;
-      font-size: .83rem;
-      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 3px;
+      padding: 6px 10px;
+      font-size: .82rem;
+      font-family: inherit;
+      background: var(--surface);
+      color: var(--ink);
       cursor: pointer;
     }
+    .toolbar input[type=text] { cursor: text; }
     .fonte-chip {
-      font-size: .72rem;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-weight: 600;
-      background: #e8edf5;
-      color: #1a3a6b;
+      font-family: Consolas, 'Courier New', monospace;
+      font-size: .7rem;
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      color: var(--muted);
     }
-    .fonte-chip.analise { background: #1a3a6b; color: #fff; }
+    .fonte-chip.analise { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 
-    /* ── Cards ───────────────────────────────────────────── */
+    /* ── Resumo (faixa de balancete) ───────────────────────── */
     .cards {
       display: flex;
-      gap: 16px;
-      padding: 20px 32px 8px;
       flex-wrap: wrap;
+      margin: 18px 32px 6px;
+      border: 1px solid var(--line);
+      background: var(--surface);
     }
     .card {
       flex: 1;
-      min-width: 160px;
-      background: #fff;
-      border-radius: 10px;
-      padding: 16px 18px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.08);
-      border-left: 5px solid #ccc;
+      min-width: 170px;
+      padding: 14px 18px;
+      border-left: 1px solid var(--line);
     }
-    .card.verde   { border-left-color: #28a745; }
-    .card.amarelo { border-left-color: #ffc107; }
-    .card.laranja { border-left-color: #fd7e14; }
-    .card.vermelho{ border-left-color: #dc3545; }
-    .card .num { font-size: 2rem; font-weight: 700; line-height: 1; }
-    .card.verde   .num { color: #28a745; }
-    .card.amarelo .num { color: #e6a800; }
-    .card.laranja .num { color: #fd7e14; }
-    .card.vermelho .num { color: #dc3545; }
-    .card .label { font-size: .76rem; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: .5px; }
-    .card .desc  { font-size: .7rem;  color: #999; margin-top: 2px; }
+    .card:first-child { border-left: none; }
+    .card .num { font-family: Consolas, 'Courier New', monospace; font-variant-numeric: tabular-nums; font-size: 1.7rem; font-weight: 500; line-height: 1; color: var(--ink); }
+    .card.verde    .num { color: var(--ok); }
+    .card.amarelo  .num { color: var(--warn); }
+    .card.laranja  .num { color: var(--warn); }
+    .card.vermelho .num { color: var(--danger); }
+    .card .label { font-size: .72rem; color: var(--ink); margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+    .card .desc  { font-size: .71rem; color: var(--muted); margin-top: 2px; }
 
     /* ── Tabs ────────────────────────────────────────────── */
-    .tabs-wrap { padding: 14px 32px 0; }
+    .tabs-wrap { padding: 16px 32px 0; }
     .tab-nav {
       display: flex;
-      gap: 4px;
-      border-bottom: 2px solid #dde1ea;
+      gap: 2px;
+      border-bottom: 1px solid var(--line);
     }
     .tab-btn {
       background: none;
       border: none;
-      padding: 8px 18px;
-      font-size: .86rem;
+      border-bottom: 2px solid transparent;
+      padding: 9px 16px;
+      font-size: .84rem;
+      font-family: inherit;
       font-weight: 500;
       cursor: pointer;
-      color: #666;
-      border-radius: 6px 6px 0 0;
-      transition: background .1s, color .1s;
+      color: var(--muted);
+      transition: color .1s, border-color .1s;
     }
-    .tab-btn:hover { background: #e8edf5; color: #1a3a6b; }
+    .tab-btn:hover { color: var(--ink); }
     .tab-btn.active {
-      background: #fff;
-      color: #1a3a6b;
-      border: 2px solid #dde1ea;
-      border-bottom: 2px solid #fff;
-      margin-bottom: -2px;
+      color: var(--ink);
+      border-bottom-color: var(--focus);
+      font-weight: 600;
     }
     .tab-btn .badge {
       display: inline-block;
-      background: #e8edf5;
-      color: #1a3a6b;
-      border-radius: 10px;
-      font-size: .68rem;
-      padding: 1px 7px;
-      margin-left: 5px;
-      font-weight: 600;
+      font-family: Consolas, 'Courier New', monospace;
+      color: var(--muted);
+      font-size: .72rem;
+      margin-left: 4px;
     }
-    .tab-btn.active .badge { background: #1a3a6b; color: #fff; }
+    .tab-btn.active .badge { color: var(--focus); }
 
     /* ── Tabela ──────────────────────────────────────────── */
     .tab-content {
-      background: #fff;
-      border: 1px solid #dde1ea;
+      background: var(--surface);
+      border: 1px solid var(--line);
       border-top: none;
-      border-radius: 0 0 10px 10px;
-      overflow: hidden;
       margin-bottom: 32px;
     }
     .table-wrap { overflow-x: auto; }
@@ -227,59 +252,66 @@
       border-collapse: collapse;
       font-size: .81rem;
     }
-    thead tr { background: #f5f7fb; }
+    thead tr { background: var(--paper); }
     th {
-      padding: 9px 11px;
+      padding: 10px 12px;
       text-align: left;
       font-weight: 600;
-      color: #444;
-      border-bottom: 2px solid #dde1ea;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--line);
       white-space: nowrap;
     }
     td {
-      padding: 8px 11px;
-      border-bottom: 1px solid #eef0f4;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line-soft);
       vertical-align: top;
     }
-    tbody tr:hover { background: #f8f9fc; }
+    td.num-cell, .obj-cell + td { font-family: Consolas, 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+    tbody tr:hover { background: var(--paper); }
     tbody tr:last-child td { border-bottom: none; }
-    tbody tr.alerta td { background: #fff5f5; }
-    tbody tr.alerta:hover td { background: #ffeaea; }
-    
+    tbody tr.alerta td { background: var(--danger-bg); }
+    tbody tr.alerta:hover td { background: #ecd0cb; }
+
     .badge-alerta {
-      background: #dc3545;
-      color: #fff;
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-size: .67rem;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      padding: 2px 7px;
+      font-size: .68rem;
       font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px;
     }
     .score-pill {
       display: inline-block;
-      border-radius: 10px;
-      padding: 2px 8px;
-      font-size: .73rem;
-      font-weight: 600;
+      font-family: Consolas, 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      padding: 2px 7px;
+      font-size: .74rem;
+      font-weight: 500;
+      border: 1px solid transparent;
     }
-    .score-alto   { background: #d4edda; color: #155724; }
-    .score-medio  { background: #fff3cd; color: #856404; }
-    .score-baixo  { background: #f8d7da; color: #721c24; }
-    .chip { display: inline-block; border-radius: 10px; padding: 2px 8px; font-size: .7rem; font-weight: 600; }
-    .chip-s { background: #d4edda; color: #155724; }
-    .chip-n { background: #f8d7da; color: #721c24; }
-    .chip-p { background: #fff3cd; color: #856404; }
+    .score-alto   { background: var(--ok-bg);   color: var(--ok);    border-color: var(--ok); }
+    .score-medio  { background: var(--warn-bg); color: var(--warn);  border-color: var(--warn); }
+    .score-baixo  { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+    .chip { display: inline-block; padding: 2px 8px; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; border: 1px solid transparent; }
+    .chip-s { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+    .chip-n { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+    .chip-p { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 
     .state-msg {
-      padding: 40px;
+      padding: 44px;
       text-align: center;
-      color: #999;
-      font-size: .88rem;
+      color: var(--muted);
+      font-size: .87rem;
     }
     .spinner {
       display: inline-block;
-      width: 24px; height: 24px;
-      border: 3px solid #dde1ea;
-      border-top-color: #1a3a6b;
+      width: 20px; height: 20px;
+      border: 2.5px solid var(--line);
+      border-top-color: var(--focus);
       border-radius: 50%;
       animation: spin .7s linear infinite;
       margin-bottom: 8px;
@@ -287,6 +319,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .obj-cell { max-width: 350px; }
     .obj-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+    .pagination-wrap { font-family: Consolas, 'Courier New', monospace; }
   </style>
 </head>
 <body>
@@ -298,35 +332,34 @@
     <div class="sub" id="header-sub">Lucas do Rio Verde — Mato Grosso · 2026</div>
   </div>
   <div class="header-right">
-    <a href="index.html" class="btn btn-outline" style="border-color: rgba(255,255,255,0.4); color: #fff; background: transparent; font-size: 0.75rem; text-decoration: none;">↩ Voltar ao Firebase</a>
     <div id="ultima-atualizacao">Pronto para Cruzamento</div>
   </div>
 </header>
 
 <!-- ── Painel Cruzamento ao Vivo ─────────────────────────────────────────── -->
 <div class="painel">
-  <div class="painel-header" style="background: #f8f9fb;">
+  <div class="painel-header">
     <span>Cruzamento em Tempo Real</span>
   </div>
   <div id="painel-body">
     <div style="display: flex; flex-direction: column; gap: 16px;">
-      <p style="font-size: .80rem; color: #555; line-height: 1.4; margin: 0;">
-        Cruze as informações em tempo real buscando as contratações diretamente do banco de dados <strong>Oracle (APLIC)</strong> do TCE-MT e do portal federal <strong>PNCP</strong>. O processo leva em média de 2 a 5 segundos e realiza o cruzamento em memória.
+      <p style="font-size: .80rem; color: var(--muted); line-height: 1.5; margin: 0; max-width: 68ch;">
+        Cruza as contratações diretamente do banco de dados <strong>Oracle (APLIC)</strong> do TCE-MT com o portal federal <strong>PNCP</strong>. A consulta é feita ao vivo, sem base intermediária.
       </p>
-      
+
       <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
         <button class="btn btn-live" id="btn-live" onclick="runLiveCrossmatch(false)" style="font-size: 0.86rem; padding: 9px 20px;">
           Iniciar Cruzamento
         </button>
         <button class="btn btn-outline" id="btn-refresh" onclick="runLiveCrossmatch(true)" style="display:none; font-size: 0.8rem; padding: 7px 14px;" title="Ignora o cache e busca os dados novamente no Oracle e no PNCP">
-          🔄 Forçar atualização
+          Forçar atualização
         </button>
-        <span id="live-status-text" style="font-size: 0.8rem; color: #777; font-weight: 500;">Aguardando início...</span>
-        <span id="cache-indicator" style="font-size: 0.76rem; color: #999; display:none;"></span>
+        <span id="live-status-text" style="font-size: 0.8rem; color: var(--muted); font-weight: 500;">Aguardando início...</span>
+        <span id="cache-indicator" style="font-size: 0.76rem; color: var(--faint); display:none;"></span>
       </div>
 
       <!-- LOADER PROGRESS TRACKER (Hides/Shows dynamically) -->
-      <div id="loading-animation-container" style="display: none; margin-top: 14px; border-top: 1px solid #eef0f4; padding-top: 16px;">
+      <div id="loading-animation-container" style="display: none; margin-top: 14px; border-top: 1px solid var(--line-soft); padding-top: 16px;">
         <!-- Progress Bar -->
         <div class="progress-wrap" style="max-width: 500px; margin: 0 auto 20px;">
           <div class="progress-bar">
@@ -378,12 +411,20 @@
 <div class="toolbar">
   <label for="filtro-municipio">Município:</label>
   <select id="filtro-municipio" onchange="onMunicipioChange(this.value)">
-    <option value="lucas_do_rio_verde" selected>Lucas do Rio Verde</option>
-    <option value="acorizal">Acorizal</option>
-    <option value="jangada">Jangada</option>
-    <option value="rondonopolis">Rondonópolis</option>
-    <option value="rondolandia">Rondolândia</option>
-    <option value="sinop">Sinop</option>
+    <option value="Lucas do Rio Verde" selected>Lucas do Rio Verde</option>
+    <option value="Acorizal">Acorizal</option>
+    <option value="Jangada">Jangada</option>
+    <option value="Rondonópolis">Rondonópolis</option>
+    <option value="Rondolândia">Rondolândia</option>
+    <option value="Sinop">Sinop</option>
+    <option value="Cuiabá">Cuiabá</option>
+    <option value="Várzea Grande">Várzea Grande</option>
+    <option value="Tangará da Serra">Tangará da Serra</option>
+    <option value="Cáceres">Cáceres</option>
+    <option value="Sorriso">Sorriso</option>
+    <option value="Primavera do Leste">Primavera do Leste</option>
+    <option value="Barra do Garças">Barra do Garças</option>
+    <option value="Alta Floresta">Alta Floresta</option>
   </select>
 
   <label for="filtro-ano">Exercício:</label>
@@ -400,15 +441,15 @@
   <label for="search-input">Buscar:</label>
   <input type="text" id="search-input" oninput="onSearchInput(this.value)" placeholder="Nº ou Objeto..." style="width: 180px;">
 
-  <span class="fonte-chip" id="fonte-chip">📡 Firebase (Histórico)</span>
-  <button id="btn-export" onclick="exportCurrentTabToCSV()" style="margin-left: auto;">📥 Exportar CSV</button>
+  <span class="fonte-chip" id="fonte-chip">Aguardando cruzamento</span>
+  <button id="btn-export" class="btn btn-outline" onclick="exportCurrentTabToCSV()" style="margin-left: auto;">Exportar CSV</button>
 </div>
 
-<!-- ── Cards ───────────────────────────────────────────────────────────── -->
+<!-- ── Resumo ─────────────────────────────────────────────────────────── -->
 <div class="cards">
   <div class="card verde" title="Licitações encontradas nos dois sistemas (PNCP e APLIC) pelo algoritmo de crossmatch">
     <div class="num" id="cnt-ambos">—</div>
-    <div class="label">Publicadas nos Dois Sistemas</div>
+    <div class="label">Nos dois sistemas</div>
     <div class="desc">Registradas no PNCP e no APLIC</div>
   </div>
   <div class="card amarelo" title="Publicadas no PNCP mas ainda sem registro correspondente no APLIC (sistema do TCE-MT)">
@@ -423,20 +464,18 @@
   </div>
   <div class="card vermelho" title="Publicadas no PNCP há mais de 5 dias úteis sem aparecerem no APLIC — prazo legal vencido">
     <div class="num" id="cnt-alertas">—</div>
-    <div class="label">Prazo Vencido</div>
+    <div class="label">Prazo vencido</div>
     <div class="desc">+5 dias úteis no PNCP sem registro no APLIC</div>
   </div>
 </div>
 
 <!-- ── Resumo de dados do município ─────────────────────────────────────── -->
 <div id="resumo-municipio" style="
-  margin: 0 32px 16px;
-  background: #eef2fb;
-  border-left: 4px solid #1a3a6b;
-  border-radius: 0 8px 8px 0;
-  padding: 12px 18px;
+  margin: 12px 32px 6px;
+  border-left: 3px solid var(--focus);
+  padding: 10px 18px;
   font-size: .83rem;
-  color: #1a2a4a;
+  color: var(--ink);
   line-height: 1.6;
   display: none;
 ">
@@ -600,8 +639,7 @@ function showCacheIndicator(cachedAtIso) {
 // RUN LIVE CROSSMATCH CALL (job-based: start + poll)
 // ═══════════════════════════════════════════════════════════════════════════
 async function runLiveCrossmatch(force) {
-  const selectMun = document.getElementById('filtro-municipio');
-  const munNormalized = selectMun.value.replace(/_/g, ' ');
+  const munNormalized = document.getElementById('filtro-municipio').value.trim();
   const btnLive = document.getElementById('btn-live');
   const btnRefresh = document.getElementById('btn-refresh');
 
@@ -654,7 +692,7 @@ async function runLiveCrossmatch(force) {
       if (job.status === 'error') {
         finish();
         alert(`Falha no cruzamento:\n${job.error}`);
-        tableContainer.innerHTML = `<div class="state-msg" style="color: #dc3545;">Erro: ${job.error}</div>`;
+        tableContainer.innerHTML = `<div class="state-msg" style="color: var(--danger);">Erro: ${job.error}</div>`;
         return;
       }
 
@@ -663,7 +701,7 @@ async function runLiveCrossmatch(force) {
   } catch (err) {
     finish();
     alert(`Falha no cruzamento:\n${err.message}\n\nVerifique se o backend Go ("go run ./cmd/dashboard") está rodando localmente.`);
-    tableContainer.innerHTML = `<div class="state-msg" style="color: #dc3545;">Erro na API local: ${err.message}</div>`;
+    tableContainer.innerHTML = `<div class="state-msg" style="color: var(--danger);">Erro na API local: ${err.message}</div>`;
   }
 }
 
@@ -956,8 +994,8 @@ function switchTab(name, btn) {
 }
 
 function onMunicipioChange(val) {
-  currentMunKey = val;
-  const munName = val.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const munName = val.trim();
+  currentMunKey = munName.toLowerCase().replace(/\s+/g, '_');
   document.getElementById('header-sub').textContent = `${munName} — MT · ${filtroAno}`;
   
   // Clear buffers
@@ -971,7 +1009,7 @@ function onMunicipioChange(val) {
   updateOrgaoFilterOptions();
   
   document.getElementById('ultima-atualizacao').textContent = 'Pronto para Cruzamento';
-  document.getElementById('fonte-chip').textContent = '📡 Firebase (Histórico)';
+  document.getElementById('fonte-chip').textContent = 'Aguardando cruzamento';
   document.getElementById('fonte-chip').className = 'fonte-chip';
   
   // Reset table container
@@ -986,8 +1024,7 @@ function onMunicipioChange(val) {
 
 function onAnoChange(val) {
   filtroAno = val;
-  const selectMun = document.getElementById('filtro-municipio');
-  onMunicipioChange(selectMun.value);
+  onMunicipioChange(document.getElementById('filtro-municipio').value);
 }
 
 function onFiltroChange(val) {
